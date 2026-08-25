@@ -1,30 +1,75 @@
 import Link from "next/link";
+import Image from "next/image";
+import type { LucideIcon } from "lucide-react";
+import { Edit3, Image as ImageIcon, Sparkles, BookOpen } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 
-/**
- * Landing page. Deliberately static — it exists to point at the example
- * feature, which is where the actual pattern lives.
- */
-export default function Home() {
+export default function LandingPage() {
   return (
-    <main className="mx-auto w-full max-w-2xl space-y-8 px-6 py-24">
-      <div className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Frontend Template
-        </h1>
-        <p className="text-muted-foreground">
-          A reference structure for consuming the FastAPI backend. Each layer
-          here mirrors a layer in the backend repo — read{" "}
-          <code className="font-mono text-sm">README.md</code> for the mapping,
-          then copy <code className="font-mono text-sm">features/example/</code>{" "}
-          to start a feature of your own.
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#FDFBF7]">
+      <header className="px-8 py-6">
+        <h1 className="font-heading text-2xl font-bold text-amber-950">Memoir</h1>
+      </header>
 
-      <Link href="/example" className={buttonVariants()}>
-        View the example feature
-      </Link>
-    </main>
+      <main className="mx-auto max-w-6xl px-6 py-12">
+        <section className="flex flex-col items-center justify-between gap-12 lg:flex-row">
+          <div className="max-w-xl space-y-6">
+            <h2 className="font-heading text-5xl leading-tight text-amber-950 md:text-6xl">
+              Everyone Deserves to be remembered
+            </h2>
+            <p className="text-sm font-semibold uppercase leading-relaxed tracking-widest text-amber-900/80">
+              BRING TOGETHER THE STORIES, PHOTOGRAPHS, VOICES, AND MOMENTS. WE TURN THEM INTO A MEMORY WORTH KEEPING FOR GENERATIONS.
+            </p>
+            <Link href="/onboarding" className="inline-block">
+              <Button
+                size="lg"
+                className="h-14 rounded-full bg-[#65402A] px-8 text-lg hover:bg-amber-950"
+              >
+                Let&apos;s start preserving
+              </Button>
+            </Link>
+          </div>
+
+          <div className="relative aspect-video w-full max-w-lg overflow-hidden rounded-2xl bg-amber-100 shadow-xl">
+            <Image
+              src="/Couple.png"
+              alt="Family memory"
+              fill
+              className="object-cover"
+            />
+          </div>
+        </section>
+
+        <section className="mt-32 text-center">
+          <h3 className="font-heading text-4xl text-amber-950">
+            How we preserve memories
+          </h3>
+
+          <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <ProcessCard icon={Edit3} title="CREATE YOUR WORKSPACE" />
+            <ProcessCard
+              icon={ImageIcon}
+              title="INVITE MEMBERS TO CONTRIBUTE MEMORIES"
+            />
+            <ProcessCard icon={Sparkles} title="AI AGENTS ORGANIZES MEMORIES" />
+            <ProcessCard icon={BookOpen} title="GET YOUR MEMOIR" />
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function ProcessCard({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl bg-[#F3E8DA] p-8 text-center shadow-sm transition-transform hover:scale-105">
+      <div className="flex size-16 items-center justify-center rounded-full bg-amber-900/10">
+        <Icon className="size-8 text-amber-950" />
+      </div>
+      <h4 className="font-heading text-sm font-bold uppercase tracking-wider text-amber-950">
+        {title}
+      </h4>
+    </div>
   );
 }
