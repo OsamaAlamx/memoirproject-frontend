@@ -24,16 +24,17 @@ export function useMemoriesQuery(memoirId: string) {
 }
 
 export function useCreateMemory(memoirId: string) {
-  const qc = useQueryClient();
+  // Draft creation must NOT invalidate the list.
+  // Invalidating here remounts the composer and spawns endless drafts.
   return useMutation({
     mutationFn: (request: MemoryCreateRequest) => createMemory(memoirId, request),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memoryKeys.list(memoirId) }),
   });
 }
 
 export function usePatchMemory(memoirId: string) {
   return useMutation({
-    mutationFn: (v: { memoryId: string; patch: MemoryPatchRequest }) => patchMemory(memoirId, v.memoryId, v.patch),
+    mutationFn: (v: { memoryId: string; patch: MemoryPatchRequest }) =>
+      patchMemory(memoirId, v.memoryId, v.patch),
   });
 }
 
@@ -62,7 +63,8 @@ export function useUploadMedia() {
 export function useRemoveMedia(memoirId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { memoryId: string; mediaAssetId: string }) => removeMedia(memoirId, v.memoryId, v.mediaAssetId),
+    mutationFn: (v: { memoryId: string; mediaAssetId: string }) =>
+      removeMedia(memoirId, v.memoryId, v.mediaAssetId),
     onSuccess: () => qc.invalidateQueries({ queryKey: memoryKeys.list(memoirId) }),
   });
 }

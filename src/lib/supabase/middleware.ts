@@ -32,23 +32,24 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Protected routes
-  if (!user && (
-    request.nextUrl.pathname.startsWith("/dashboard")
-  )) {
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith("/dashboard") ||
+      request.nextUrl.pathname.startsWith("/memoirs"))
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && (
-    request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname === "/signup"
-  )) {
+  if (
+    user &&
+    (request.nextUrl.pathname === "/login" ||
+      request.nextUrl.pathname === "/signup")
+  ) {
     const url = request.nextUrl.clone();
-    url.pathname = "/onboarding";
+    url.pathname = "/onboarding"; // wizard forwards to /memoirs if nothing is pending
     return NextResponse.redirect(url);
   }
-
-  return supabaseResponse;
 }

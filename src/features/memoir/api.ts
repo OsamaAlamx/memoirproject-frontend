@@ -26,3 +26,11 @@ export async function fetchMemoir(
     ...options,
   });
 }
+
+export async function publishMemoir(id: string): Promise<Memoir> {
+  return apiRequest({
+    path: `/memoirs/${id}/publish`,
+    method: "POST",
+    schema: memoirSchema,
+  });
+}

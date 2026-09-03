@@ -1,7 +1,6 @@
 "use client";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +31,8 @@ const RELATIONS: { label: string; value: RelationshipGroup }[] = [
 
 export function OnboardingWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const forceNew = searchParams.get("new") === "1";
   const create = useCreateMemoir();
   const supabase = useMemo(() => createClient(), []);
 
@@ -91,6 +92,13 @@ export function OnboardingWizard() {
 
       if (cancelled) return;
 
+      // Already signed in, nothing pending, and not explicitly creating a new
+      // memoir -> send them to their memoir list instead of the wizard.
+      if (userExists && !pending && !forceNew) {
+        router.replace("/memoirs");
+        return;
+      }
+
       setAuthenticated(userExists);
       if (userExists && pending) {
         setPendingCreate(pending);
@@ -103,7 +111,7 @@ export function OnboardingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [setValue, supabase]);
+  }, [forceNew, router, setValue, supabase]);
 
   const createWorkspace = useCallback(
     async (data: PendingOnboarding) => {
@@ -267,7 +275,7 @@ export function OnboardingWizard() {
               <Input
                 {...register("subject_name", { required: true })}
                 placeholder="Enter their name"
-                className="h-14 rounded-xl border-amber-900/30 bg-white text-lg"
+                className="h-24 rounded-xl border-amber-900/30 bg-white text-lg"
               />
             </div>
 
@@ -281,13 +289,13 @@ export function OnboardingWizard() {
                 min={1800}
                 max={2100}
                 placeholder="Enter year"
-                className="h-14 rounded-xl border-amber-900/30 bg-white text-center text-lg"
+                className="h-24 rounded-xl border-amber-900/30 bg-white text-center text-lg"
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 space-x-10">
               <Label className="font-heading text-2xl text-amber-950">
-                Story / Lifespan Until:
+                Lifespan Until:
               </Label>
               <div className="space-y-4 rounded-xl border border-amber-900/10 bg-white p-4">
                 <label className="flex cursor-pointer items-center gap-3">
@@ -297,7 +305,7 @@ export function OnboardingWizard() {
                     checked={isLiving}
                     onChange={() => setValue("is_living", true)}
                   />
-                  <span className="font-medium text-amber-950">Present / Ongoing</span>
+                  <span className="font-medium text-amber-950">Present</span>
                 </label>
 
                 <label className="flex cursor-pointer flex-col gap-3">

@@ -24,7 +24,9 @@ export const memoirSchema = z.object({
   status: z.string(),
   created_at: z.string(),
 });
+export const memoirListSchema = z.array(memoirSchema);
 
+export type MemoirList = z.infer<typeof memoirListSchema>;
 export type RelationshipGroup = z.infer<typeof relationshipGroupSchema>;
 export type MemoirCreateRequest = z.input<typeof memoirCreateRequestSchema>;
 export type Memoir = z.infer<typeof memoirSchema>;

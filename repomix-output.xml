@@ -1,0 +1,816 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/lib/**, src/utils/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  lib/
+    api/
+      client.test.ts
+      client.ts
+      errors.ts
+      server.ts
+    config/
+      env.ts
+    query/
+      client.ts
+    supabase/
+      client.ts
+      middleware.ts
+      server.ts
+    README.md
+    utils.ts
+  utils/
+    README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/lib/api/client.test.ts">
+/**
+ * Boundary tests. `fetch` is stubbed, so these run without a backend and
+ * verify the one guarantee the rest of the app depends on: every failure
+ * arrives as an `ApiError` with the right `code`.
+ */
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+
+import { apiRequest } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/errors";
+
+const schema = z.object({ message: z.string() });
+
+function stubFetch(response: Response | Promise<never>) {
+  return vi.spyOn(globalThis, "fetch").mockReturnValue(
+    response instanceof Response ? Promise.resolve(response) : response,
+  );
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("apiRequest", () => {
+  it("returns the parsed body on success", async () => {
+    stubFetch(jsonResponse({ message: "Hello!" }));
+
+    await expect(apiRequest({ path: "/x", schema })).resolves.toEqual({
+      message: "Hello!",
+    });
+  });
+
+  it("prefixes the path with the configured base URL", async () => {
+    const fetchMock = stubFetch(jsonResponse({ message: "Hello!" }));
+
+    await apiRequest({ path: "/example/greet", schema });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://backend.test/example/greet",
+      expect.anything(),
+    );
+  });
+
+  it("turns an unreachable backend into a `network` error", async () => {
+    stubFetch(Promise.reject(new TypeError("fetch failed")));
+
+    const error = await apiRequest({ path: "/x", schema }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.code).toBe("network");
+  });
+
+  it("turns a non-2xx response into an `http` error carrying FastAPI's detail", async () => {
+    stubFetch(jsonResponse({ detail: "Something broke" }, 500));
+
+    const error = await apiRequest({ path: "/x", schema }).catch((e) => e);
+
+    expect(error.code).toBe("http");
+    expect(error.status).toBe(500);
+    expect(error.message).toBe("Something broke");
+  });
+
+  it("unwraps FastAPI's 422 validation detail array", async () => {
+    stubFetch(
+      jsonResponse(
+        { detail: [{ loc: ["body", "name"], msg: "field required" }] },
+        422,
+      ),
+    );
+
+    const error = await apiRequest({ path: "/x", schema }).catch((e) => e);
+
+    expect(error.message).toBe("field required");
+    expect(error.isClientError).toBe(true);
+  });
+
+  it("turns an unexpected response shape into a `contract` error", async () => {
+    // A 200 with the wrong body — the drift case the schema exists to catch.
+    stubFetch(jsonResponse({ msg: "Hello!" }));
+
+    const error = await apiRequest({ path: "/x", schema }).catch((e) => e);
+
+    expect(error.code).toBe("contract");
+    expect(error.message).toContain("message");
+  });
+});
+</file>
+
+<file path="src/lib/api/errors.ts">
+/**
+ * The error taxonomy for everything that can go wrong at the API boundary.
+ *
+ * Every failure in `client.ts` is normalized into an `ApiError` with one of
+ * three codes. Components never see a raw `TypeError`, a bare `Response`, or a
+ * `ZodError` — they see an `ApiError` and can branch on `code`.
+ */
+
+/**
+ * - `network`  — the request never got an answer (backend down, DNS, timeout).
+ * - `http`     — the backend answered with a non-2xx status.
+ * - `contract` — the backend answered successfully, but not in the shape we
+ *                expect. This means the frontend and backend have drifted
+ *                apart, which is a bug to fix, not a condition to handle.
+ */
+export type ApiErrorCode = "network" | "http" | "contract";
+
+export class ApiError extends Error {
+  readonly code: ApiErrorCode;
+  /** HTTP status, or `null` when the request never completed. */
+  readonly status: number | null;
+  /** The URL that was requested, for logs. */
+  readonly url: string;
+
+  constructor(params: {
+    code: ApiErrorCode;
+    message: string;
+    url: string;
+    status?: number | null;
+    cause?: unknown;
+  }) {
+    super(params.message, { cause: params.cause });
+    this.name = "ApiError";
+    this.code = params.code;
+    this.status = params.status ?? null;
+    this.url = params.url;
+  }
+
+  static network(url: string, cause: unknown): ApiError {
+    const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+    return new ApiError({
+      code: "network",
+      url,
+      cause,
+      message: timedOut
+        ? "The server took too long to respond."
+        : "Could not reach the server. Check that the backend is running.",
+    });
+  }
+
+  static http(url: string, status: number, detail: string): ApiError {
+    return new ApiError({ code: "http", url, status, message: detail });
+  }
+
+  static contract(url: string, message: string, cause?: unknown): ApiError {
+    return new ApiError({
+      code: "contract",
+      url,
+      cause,
+      message: `Unexpected response from the server: ${message}`,
+    });
+  }
+
+  /** True for statuses where retrying the same request cannot help. */
+  get isClientError(): boolean {
+    return this.status !== null && this.status >= 400 && this.status < 500;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+/**
+ * Turns a FastAPI error body into a readable sentence.
+ *
+ * FastAPI raises errors in two shapes:
+ *   `HTTPException(500, detail="...")`  ->  { "detail": "..." }
+ *   request validation failure (422)    ->  { "detail": [{ loc, msg, type }] }
+ *
+ * Anything else falls back to the status text, so an unexpected error body can
+ * never itself become an error.
+ */
+export async function readErrorDetail(response: Response): Promise<string> {
+  const fallback = `Request failed with status ${response.status}.`;
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return fallback;
+  }
+
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return fallback;
+  }
+
+  const { detail } = body as { detail: unknown };
+
+  if (typeof detail === "string") return detail;
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        typeof item === "object" && item !== null && "msg" in item
+          ? String((item as { msg: unknown }).msg)
+          : null,
+      )
+      .filter((msg): msg is string => Boolean(msg));
+
+    if (messages.length > 0) return messages.join("; ");
+  }
+
+  return fallback;
+}
+</file>
+
+<file path="src/lib/api/server.ts">
+import "server-only";
+
+import { unstable_rethrow } from "next/navigation";
+import type { ZodType, z } from "zod";
+
+import { env } from "@/lib/config/env";
+import { ApiError, readErrorDetail } from "@/lib/api/errors";
+import { createClient } from "@/lib/supabase/server";
+
+export type ApiRequestCaching = {
+  cache?: RequestCache;
+  next?: { revalidate?: number | false; tags?: string[] };
+};
+
+export type ApiRequestOptions<TSchema extends ZodType> = ApiRequestCaching & {
+  path: string;
+  schema: TSchema;
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  body?: unknown;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+  retries?: number; // Number of retry attempts
+};
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function apiRequestServer<TSchema extends ZodType>({
+  path,
+  schema,
+  method = "GET",
+  body,
+  headers,
+  signal,
+  cache,
+  next,
+  retries = 2, // Default 2 retries
+}: ApiRequestOptions<TSchema>): Promise<z.infer<TSchema>> {
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}${path}`;
+
+  // Longer timeout for server-side requests (30 seconds)
+  const timeoutMs = 30000;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const combinedSignal = signal
+    ? AbortSignal.any([timeout, signal])
+    : timeout;
+
+  // Get auth token from server-side Supabase client
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const authHeader: Record<string, string> = session?.access_token
+    ? { Authorization: `Bearer ${session.access_token}` }
+    : {};
+
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Exponential backoff: 1s, 2s, 4s...
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        await sleep(backoffMs);
+      }
+
+      const response = await fetch(url, {
+        method,
+        signal: combinedSignal,
+        cache,
+        next,
+        headers: {
+          Accept: "application/json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...authHeader,
+          ...headers,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw ApiError.http(url, response.status, await readErrorDetail(response));
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch (cause) {
+        throw ApiError.contract(url, "the body was not valid JSON.", cause);
+      }
+
+      const result = schema.safeParse(payload);
+      if (!result.success) {
+        const fields = result.error.issues
+          .map((issue) => `${issue.path.join(".") || "(root)"} (${issue.message})`)
+          .join(", ");
+
+        throw ApiError.contract(url, fields, result.error);
+      }
+
+      return result.data;
+
+    } catch (cause) {
+      unstable_rethrow(cause);
+      
+      lastError = cause as Error;
+      
+      // Don't retry on client errors (4xx) or contract mismatches
+      if (cause instanceof ApiError) {
+        if (cause.isClientError || cause.code === "contract") {
+          throw cause;
+        }
+      }
+      
+      // If this was the last attempt, throw
+      if (attempt === retries) {
+        if (lastError.name === "TimeoutError") {
+          throw ApiError.network(url, lastError);
+        }
+        throw lastError;
+      }
+      
+      // Otherwise, loop continues for retry
+    }
+  }
+
+  // Fallback (should never reach here)
+  throw lastError || ApiError.network(url, new Error("Unknown error"));
+}
+</file>
+
+<file path="src/lib/config/env.ts">
+/**
+ * Environment configuration — the frontend twin of the backend's `src/core/`.
+ *
+ * Environment variables are external data, so they get validated like any other
+ * external data. Parsing happens at module load: if a variable is missing or
+ * malformed, the app fails immediately with a readable message instead of
+ * surfacing later as a mystery 404 or `undefined` in a URL.
+ */
+
+import { z } from "zod";
+
+const envSchema = z.object({
+  /** Base URL of the FastAPI backend, with no trailing slash. */
+  NEXT_PUBLIC_API_BASE_URL: z
+    .url("must be a valid URL, e.g. http://localhost:8000")
+    .transform((url) => url.replace(/\/+$/, "")),
+
+  /** How long a single API request may take before it is aborted. */
+  NEXT_PUBLIC_API_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10_000),
+});
+
+/**
+ * Each variable is read as a literal `process.env.X` member access.
+ *
+ * This is not stylistic. Next.js inlines `NEXT_PUBLIC_*` variables into the
+ * client bundle by statically replacing exactly this expression at build time.
+ * Passing `process.env` wholesale to `.parse()` would work on the server and
+ * silently produce `undefined` in the browser.
+ */
+const parsed = envSchema.safeParse({
+  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  NEXT_PUBLIC_API_TIMEOUT_MS: process.env.NEXT_PUBLIC_API_TIMEOUT_MS,
+});
+
+if (!parsed.success) {
+  const details = parsed.error.issues
+    .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("\n");
+
+  throw new Error(
+    `Invalid environment configuration:\n${details}\n\n` +
+      `Copy .env.example to .env.local and fill in the missing values.`,
+  );
+}
+
+export const env = parsed.data;
+</file>
+
+<file path="src/lib/query/client.ts">
+/**
+ * TanStack Query defaults for the client-side data path.
+ *
+ * These defaults are set once here rather than per-hook, so every feature
+ * behaves consistently and a new feature gets sensible behaviour for free.
+ */
+
+import { QueryClient } from "@tanstack/react-query";
+
+import { isApiError } from "@/lib/api/errors";
+
+export function makeQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        // Data is considered fresh for a minute; remounting a component in
+        // that window reads from cache instead of re-hitting the backend.
+        staleTime: 60_000,
+        retry: (failureCount, error) => {
+          // A 4xx means we sent something wrong. Sending it again three more
+          // times will not fix it — and a contract mismatch is a bug, not a
+          // transient failure. Only retry things that might genuinely recover.
+          if (isApiError(error) && (error.isClientError || error.code === "contract")) {
+            return false;
+          }
+          return failureCount < 2;
+        },
+      },
+      mutations: {
+        // Mutations are never retried automatically: the request may have been
+        // applied server-side before the response was lost.
+        retry: false,
+      },
+    },
+  });
+}
+</file>
+
+<file path="src/lib/supabase/client.ts">
+"use client";
+
+import { createBrowserClient } from "@supabase/ssr";
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+</file>
+
+<file path="src/lib/supabase/middleware.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Protected routes
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith("/dashboard") ||
+      request.nextUrl.pathname.startsWith("/memoirs"))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // Redirect authenticated users away from auth pages
+  if (
+    user &&
+    (request.nextUrl.pathname === "/login" ||
+      request.nextUrl.pathname === "/signup")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/onboarding"; // wizard forwards to /memoirs if nothing is pending
+    return NextResponse.redirect(url);
+  }
+}
+</file>
+
+<file path="src/lib/supabase/server.ts">
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Server Component - cookies cannot be set here
+          }
+        },
+      },
+    }
+  );
+}
+</file>
+
+<file path="src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+</file>
+
+<file path="src/utils/README.md">
+# src/utils
+
+The direct twin of the backend's `src/utils/`: **generic helpers that are not tied to any feature.**
+
+This directory is intentionally empty. Add a file the first time a helper is needed by a **second**
+caller — not before.
+
+## What belongs here
+
+Pure functions. Same input, same output, no side effects. The test is whether you could paste the file
+into an unrelated project and have it work untouched:
+
+- `date.ts` — `formatRelativeTime`, `toIsoDate`, `isSameDay`
+- `string.ts` — `truncate`, `slugify`, `initials`, `titleCase`
+- `number.ts` — `formatBytes`, `clamp`, `formatCurrency`
+- `array.ts` — `groupBy`, `chunk`, `uniqueBy`
+
+One file per topic, named for the topic. Export named functions — no default exports. Put the test
+beside it: `date.ts` and `date.test.ts`. Pure functions are the cheapest thing in the repo to test, so
+there is no excuse for an untested helper here.
+
+## What does not belong here
+
+| Not this | It goes in |
+| --- | --- |
+| Anything that calls `fetch` or touches the network | `lib/api/` |
+| Anything that reads `process.env` | `lib/config/env.ts` |
+| Anything importing React, or a hook | `src/hooks/` or the feature |
+| Anything that knows what a memoir, user, or greeting is | `src/features/<name>/` |
+| A helper only one feature uses | `features/<name>/utils.ts` |
+
+## utils vs. lib
+
+Both hold code that no single feature owns, and the line between them is dependencies:
+
+- **`src/lib/`** is *infrastructure*. It has dependencies, holds configuration or state, and talks to
+  the outside world — the HTTP client, validated env, the query client. You mock it in tests.
+- **`src/utils/`** is *pure functions*. No dependencies, no configuration, no I/O. You never mock it;
+  you just call it.
+
+Rule of thumb: if it has to be configured, awaited, or mocked, it is `lib/`.
+
+> **Do not confuse this directory with `src/lib/utils.ts`.** That file is shadcn's `cn` helper, managed
+> by the shadcn CLI — leave it where it is and do not move it here.
+</file>
+
+<file path="src/lib/api/client.ts">
+// File: src/lib/api/client.ts
+
+import { unstable_rethrow } from "next/navigation";
+import type { ZodType, z } from "zod";
+
+import { env } from "@/lib/config/env";
+import { ApiError, readErrorDetail } from "@/lib/api/errors";
+
+export type ApiRequestCaching = {
+  cache?: RequestCache;
+  next?: { revalidate?: number | false; tags?: string[] };
+};
+
+export type ApiRequestOptions<TSchema extends ZodType> = ApiRequestCaching & {
+  path: string;
+  schema: TSchema;
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  body?: unknown;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+};
+
+async function getAuthToken(): Promise<string | null> {
+  // Only run in browser
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    // Dynamically import to avoid server-side execution
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function apiRequest<TSchema extends ZodType>({
+  path,
+  schema,
+  method = "GET",
+  body,
+  headers,
+  signal,
+  cache,
+  next,
+}: ApiRequestOptions<TSchema>): Promise<z.infer<TSchema>> {
+  const url = `${env.NEXT_PUBLIC_API_BASE_URL}${path}`;
+
+  const timeout = AbortSignal.timeout(env.NEXT_PUBLIC_API_TIMEOUT_MS);
+  const combinedSignal = signal
+    ? AbortSignal.any([timeout, signal])
+    : timeout;
+
+  // Get auth token if in browser
+  const token = await getAuthToken();
+  const authHeader: Record<string, string> = token 
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      signal: combinedSignal,
+      cache,
+      next,
+      headers: {
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...authHeader,
+        ...headers,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (cause) {
+    unstable_rethrow(cause);
+    throw ApiError.network(url, cause);
+  }
+
+  if (!response.ok) {
+    throw ApiError.http(url, response.status, await readErrorDetail(response));
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    throw ApiError.contract(url, "the body was not valid JSON.", cause);
+  }
+
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    const fields = result.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"} (${issue.message})`)
+      .join(", ");
+
+    throw ApiError.contract(url, fields, result.error);
+  }
+
+  return result.data;
+}
+</file>
+
+<file path="src/lib/README.md">
+# src/lib
+
+App-wide infrastructure. Covers the ground the backend splits between `src/integrations/`
+(talking to the outside world) and `src/core/` (app setup).
+
+Code here knows nothing about any particular feature. If it mentions a greeting, a user, or an
+order, it belongs in `src/features/` instead.
+
+## Contents
+
+| Path | Role | Backend equivalent |
+| --- | --- | --- |
+| `api/client.ts` | The **only** module that calls `fetch`. Base URL, timeouts, error normalization, response validation. | `integrations/llm_client.py` |
+| `api/errors.ts` | The `ApiError` taxonomy: `network`, `http`, `contract`. | — |
+| `config/env.ts` | Zod-validated environment variables. Fails at boot, not at runtime. | `core/` |
+| `query/client.ts` | TanStack Query defaults: stale time, retry policy. | — |
+| `utils.ts` | shadcn's `cn` helper. Managed by the shadcn CLI — leave it alone. | — |
+
+## lib vs. utils vs. hooks
+
+Three directories hold code no single feature owns. The line between them is dependencies:
+
+| Directory | Holds | Test |
+| --- | --- | --- |
+| `lib/` | Infrastructure — dependencies, configuration, state, I/O | You mock it in tests |
+| `utils/` | Pure functions — no dependencies, no I/O | You just call it |
+| `hooks/` | Generic React hooks — state, effects, browser APIs, no fetching | It starts with `"use client"` |
+
+Rule of thumb: if it has to be configured, awaited, or mocked, it belongs here in `lib/`.
+
+Note that `utils.ts` in this directory is shadcn's `cn` helper and is unrelated to `src/utils/`. Leave
+it where it is.
+
+## Adding to this directory
+
+Ask first whether it is really app-wide. A helper used by one feature belongs in that feature.
+
+Good reasons to add here:
+
+- A second external service the app talks to (analytics, file uploads) → new folder under `lib/`,
+  built the way `api/` is: one module owning all contact with that service.
+- App-wide configuration or a provider used by every route.
+
+When authentication arrives, the token belongs in `api/client.ts` — the single place requests are
+built — and nowhere else.
+</file>
+
+</files>

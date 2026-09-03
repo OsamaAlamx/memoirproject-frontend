@@ -1,10 +1,11 @@
 import Link from "next/link";
-
 import { Button } from "@/components/ui/button";
 import type { Memoir } from "@/features/memoir/schemas";
+import { PublishButton } from "./PublishButton"; // <-- Import the new button
 
 export function ProfileCard({ memoir }: { memoir: Memoir }) {
   const badge = memoir.subject_is_living ? "Ongoing" : "In Loving memory";
+  const isPublished = memoir.status === "published";
 
   return (
     <section className="rounded-3xl bg-[#F3E8DA] p-6 shadow-sm">
@@ -21,6 +22,11 @@ export function ProfileCard({ memoir }: { memoir: Memoir }) {
               <span className="rounded-full bg-[#65402A] px-3 py-1 text-xs font-medium text-white">
                 {badge}
               </span>
+              {isPublished && (
+                <span className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white">
+                  Published
+                </span>
+              )}
             </div>
             <p className="max-w-md text-sm leading-relaxed text-amber-900/80">
               {memoir.description?.trim() ||
@@ -29,11 +35,24 @@ export function ProfileCard({ memoir }: { memoir: Memoir }) {
           </div>
         </div>
 
-        <Link href={`/dashboard/${memoir.id}/settings`}>
-          <Button className="rounded-xl bg-[#65402A] hover:bg-amber-950">
-            Edit profile
-          </Button>
-        </Link>
+        <div className="flex flex-col gap-2 sm:items-end">
+          {/* Conditional rendering based on published state */}
+          {!isPublished && <PublishButton memoirId={memoir.id} />}
+          
+          <Link href={`/dashboard/${memoir.id}/settings`}>
+            <Button variant="outline" className="rounded-xl border-amber-900/20 hover:bg-amber-900/10">
+              Edit profile
+            </Button>
+          </Link>
+
+          {isPublished && (
+            <Link href={`/read/${memoir.id}`}>
+              <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white">
+                See Memoir
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
     </section>
   );

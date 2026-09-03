@@ -20,7 +20,7 @@ import {
   ImagePicker,
   type PickedImage,
 } from "@/features/memory/components/ImagePicker";
-import { clearDraft, saveDraft } from "@/features/memory/draft-store";
+import { clearDraft } from "@/features/memory/draft-store";
 import { isApiError } from "@/lib/api/errors";
 
 export function MemoryComposer({
@@ -43,8 +43,7 @@ export function MemoryComposer({
   const submit = useSubmitMemory(memoirId);
   const upload = useUploadMedia();
 
-  const autosaveRef = useRef<number | null>(null);
-
+  // Create a single draft memory when the composer mounts
   useEffect(() => {
     let active = true;
 
@@ -68,52 +67,8 @@ export function MemoryComposer({
     return () => {
       active = false;
     };
-    // A composer creates one draft for its lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!memoryId) return;
-
-    if (autosaveRef.current) {
-      window.clearTimeout(autosaveRef.current);
-    }
-
-    autosaveRef.current = window.setTimeout(async () => {
-      try {
-        await patch.mutateAsync({
-          memoryId,
-          patch: { title, body_text: bodyText },
-        });
-
-        await saveDraft({
-          memoirId,
-          memoryId,
-          title,
-          body: bodyText,
-          audioBlobs: audioClips.map((clip) => ({
-            blob: clip.blob,
-            durationMs: clip.durationMs,
-            mimeType: clip.mimeType,
-          })),
-          imageBlobs: photos.map((photo) => ({
-            blob: photo.file,
-            caption: photo.caption,
-            mimeType: photo.file.type,
-          })),
-          updatedAt: Date.now(),
-        });
-      } catch {
-        // The server-side draft remains available even when local autosave fails.
-      }
-    }, 10_000);
-
-    return () => {
-      if (autosaveRef.current) {
-        window.clearTimeout(autosaveRef.current);
-      }
-    };
-  }, [audioClips, bodyText, memoirId, memoryId, patch, photos, title]);
 
   const hasContent = Boolean(
     title.trim() ||
@@ -211,7 +166,7 @@ export function MemoryComposer({
               id="memory-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Optional title"
+              placeholder="Enter title name"
             />
           </div>
 
@@ -221,7 +176,7 @@ export function MemoryComposer({
               id="memory-body"
               value={bodyText}
               onChange={(event) => setBodyText(event.target.value)}
-              placeholder="Write something about this memory"
+              placeholder="Enter details about memory"
               className="min-h-32 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-900/20"
             />
           </div>

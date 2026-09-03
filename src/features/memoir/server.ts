@@ -1,3 +1,3 @@
 import "server-only";
 
-export { getMemoir } from "@/features/memoir/queries";
+export { getMemoir, getMemoirs } from "@/features/memoir/queries";

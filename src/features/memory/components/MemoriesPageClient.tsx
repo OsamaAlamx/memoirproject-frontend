@@ -18,26 +18,18 @@ export function MemoriesPageClient({
   const { data, isLoading, isError, refetch } = useMemoriesQuery(memoirId);
   const [composing, setComposing] = useState(false);
 
-  if (isLoading) {
-    return (
-      <p className="py-24 text-center text-amber-900/70">Loading memories…</p>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="space-y-4 py-24 text-center">
-        <p className="text-destructive">Couldn&apos;t load memories.</p>
-        <Button onClick={() => refetch()}>Try again</Button>
-      </div>
-    );
-  }
-
   const submitted = (data?.memories ?? []).filter((m) => m.status === "submitted");
 
   return (
     <div className="space-y-8">
-      {submitted.length === 0 ? (
+      {isLoading ? (
+        <p className="py-24 text-center text-amber-900/70">Loading memories…</p>
+      ) : isError ? (
+        <div className="space-y-4 py-24 text-center">
+          <p className="text-destructive">Couldn&apos;t load memories.</p>
+          <Button onClick={() => void refetch()}>Try again</Button>
+        </div>
+      ) : submitted.length === 0 ? (
         <EmptyState onAdd={() => setComposing(true)} />
       ) : (
         <>
@@ -62,6 +54,7 @@ export function MemoriesPageClient({
         </>
       )}
 
+      {/* Always rendered outside loading/error branches so it never unmounts mid-draft */}
       {composing && (
         <MemoryComposer
           memoirId={memoirId}

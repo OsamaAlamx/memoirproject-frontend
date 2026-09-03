@@ -4,8 +4,17 @@ import type { LucideIcon } from "lucide-react";
 import { Edit3, Image as ImageIcon, Sparkles, BookOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Logged in -> memoir list. Logged out -> onboarding wizard.
+  const ctaHref = user ? "/memoirs" : "/onboarding";
+
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
       <header className="px-8 py-6">
@@ -21,7 +30,7 @@ export default function LandingPage() {
             <p className="text-sm font-semibold uppercase leading-relaxed tracking-widest text-amber-900/80">
               BRING TOGETHER THE STORIES, PHOTOGRAPHS, VOICES, AND MOMENTS. WE TURN THEM INTO A MEMORY WORTH KEEPING FOR GENERATIONS.
             </p>
-            <Link href="/onboarding" className="inline-block">
+            <Link href={ctaHref} className="inline-block">
               <Button
                 size="lg"
                 className="h-14 rounded-full bg-[#65402A] px-8 text-lg hover:bg-amber-950"
@@ -36,6 +45,7 @@ export default function LandingPage() {
               src="/Couple.png"
               alt="Family memory"
               fill
+              sizes="(max-width: 1024px) 100vw, 512px"
               className="object-cover"
             />
           </div>
