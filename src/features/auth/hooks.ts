@@ -30,6 +30,16 @@ export function useAuth() {
     setSuccessMessage(null);
   };
 
+  const extractAccessToken = (res: any): string | null => {
+    const token =
+      res?.access_token ||
+      res?.token ||
+      res?.data?.access_token ||
+      res?.data?.token ||
+      null;
+    return typeof token === "string" && token.trim() ? token : null;
+  };
+
   const handleLogin = async (data: LoginInput): Promise<boolean> => {
     startAuthAction();
 
@@ -39,11 +49,14 @@ export function useAuth() {
         password: data.password,
       });
 
-      const accessToken = res.access_token || res.token || res.data?.access_token;
-      if (accessToken) {
-        localStorage.setItem("access_token", accessToken);
-        await processPendingMemoir(); // FIX: Added pending memoir creation for logging in
+      const accessToken = extractAccessToken(res);
+
+      if (!accessToken) {
+        throw new Error("Login did not return an access token.");
       }
+
+      localStorage.setItem("access_token", accessToken);
+      await processPendingMemoir();
 
       router.push("/dashboard");
       return true;
@@ -69,20 +82,36 @@ export function useAuth() {
         password: data.password,
       });
 
-      const accessToken = res.access_token || res.token || res.data?.access_token;
-      if (accessToken) {
-        localStorage.setItem("access_token", accessToken);
-        await processPendingMemoir();
+      const accessToken = extractAccessToken(res);
+
+      // If Supabase requires email confirmation, access token will be null.
+      // Do NOT send the user to /dashboard in that case.
+      if (!accessToken) {
+        setSuccessMessage(
+          "Account created! Please check your email to confirm your account, then log in."
+        );
+        setTimeout(() => router.push("/login"), 2000);
+        return true;
       }
 
-      setSuccessMessage(
-        "Account created successfully! Please proceed to log in."
-      );
-      setTimeout(() => router.push("/login"), 2000);
+       localStorage.setItem("access_token", accessToken);
+
+      // Restore active memoir from login response if present
+      const activeMemoir = res?.data?.active_memoir || res?.active_memoir;
+      if (activeMemoir) {
+        localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
+      }
+
+      await processPendingMemoir();
+
+      router.push("/dashboard");
       return true;
+      
     } catch (err: unknown) {
       const errorMessage =
-        err instanceof Error ? err.message : "An unknown error occurred during signup";
+        err instanceof Error
+          ? err.message
+          : "An unknown error occurred during signup";
       setServerError(errorMessage);
       return false;
     } finally {

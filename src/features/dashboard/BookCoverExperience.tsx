@@ -12,15 +12,14 @@ interface BookCoverExperienceProps {
 export function BookCoverExperience({
   children,
   title = "A Lifetime Remembered",
-  subtitle = "A Living Archive of Stories & Voices"
+  subtitle = "A Living Archive of Stories & Voices",
 }: BookCoverExperienceProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-memory-bg relative overflow-x-hidden perspective-[2000px]">
-      
+    <div className="h-screen bg-memory-bg relative overflow-hidden perspective-[2000px]">
       {/* --- UNDERLYING DASHBOARD CONTENT --- */}
-      <div className="w-full min-h-screen">
+      <div className="w-full h-full overflow-y-auto">
         {children}
       </div>
 
@@ -38,10 +37,8 @@ export function BookCoverExperience({
         <div className="absolute left-0 top-0 bottom-0 w-12 bg-linear-to-r from-black/50 via-black/15 to-transparent pointer-events-none" />
 
         {/* Elegant Inner Foil Border Frame with Corner Accents */}
-          <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg">
-          </div>
-          <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg">
-          </div>
+        <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg" />
+        <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg" />
         <div />
 
         {/* Center Cover Art & Typography */}
@@ -59,7 +56,7 @@ export function BookCoverExperience({
 
         {/* Bottom Footer & Interactive Open Button */}
         <div className="text-center pb-6 z-10 space-y-4">
-          <motion.button 
+          <motion.button
             type="button"
             onClick={() => setIsOpen(true)}
             whileHover={{ scale: 1.05 }}
@@ -72,9 +69,7 @@ export function BookCoverExperience({
             Click to break the seal & enter
           </p>
         </div>
-
       </motion.div>
-
     </div>
   );
 }

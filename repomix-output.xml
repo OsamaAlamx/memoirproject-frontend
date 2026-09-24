@@ -140,227 +140,6 @@ src/
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/features/dashboard/components/ChapterOrganizer.tsx">
-"use client";
-
-import React, { useState } from "react";
-import { api, ChapterProposalPayload } from "@/lib/api/client";
-
-export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [proposal, setProposal] = useState<ChapterProposalPayload | null>(null);
-  
-  // New chat states
-  const [chatInput, setChatInput] = useState("");
-  const [isRefining, setIsRefining] = useState(false);
-
-  const runPipeline = async () => {
-    if (!memoirId) return;
-    setLoading(true);
-    try {
-      const data = await api.proposeChapters(memoirId);
-      setProposal(data);
-    } catch (err: unknown) {
-      console.error("Chapter proposal error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to organize chapters. Please try again.";
-      alert(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefine = async () => {
-    if (!memoirId || !proposal || !chatInput.trim()) return;
-    setIsRefining(true);
-    try {
-      const data = await api.refineChapters(memoirId, proposal, chatInput.trim());
-      setProposal(data);
-      setChatInput("");
-    } catch (err: unknown) {
-      console.error("Chapter refine error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to refine chapters.";
-      alert(msg);
-    } finally {
-      setIsRefining(false);
-    }
-  };
-
-  const handleApply = async () => {
-    if (!memoirId || !proposal) return;
-    savingState(true);
-    try {
-      await api.applyChapters(memoirId, proposal);
-      alert("Chapter layout and narrative successfully applied!");
-      setProposal(null);
-    } catch (err: unknown) {
-      console.error("Chapter apply error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to save chapters.";
-      alert(msg);
-    } finally {
-      savingState(false);
-    }
-  };
-
-  const savingState = (val: boolean) => setSaving(val);
-
-  const handleRename = (idx: number, newTitle: string) => {
-    if (!proposal) return;
-    const updated = { ...proposal };
-    updated.chapters[idx].title = newTitle;
-    setProposal(updated);
-  };
-  
-  const handleEditSummary = (idx: number, newSummary: string) => {
-    if (!proposal) return;
-    const updated = { ...proposal };
-    updated.chapters[idx].summary = newSummary;
-    setProposal(updated);
-  };
-
-  if (loading) {
-    return (
-      <div className="bg-white rounded-2xl border border-memory-maroon/20 p-12 text-center shadow-xs">
-        <div className="animate-spin w-8 h-8 border-2 border-memory-maroon border-t-transparent rounded-full mx-auto mb-4"></div>
-        <h3 className="font-serif text-xl text-memory-primary mb-2">Agents are running...</h3>
-        <p className="text-sm text-memory-muted">
-          Reading scattered memories...<br/>
-          Synthesizing biographical narrative...<br/>
-          Organizing timeline...
-        </p>
-      </div>
-    );
-  }
-
-  if (!proposal) {
-    return (
-      <div className="bg-white rounded-2xl border border-memory-maroon/20 p-12 text-center shadow-xs">
-        <div className="w-12 h-12 bg-memory-light text-memory-accent border border-memory-accent rounded-full flex items-center justify-center mx-auto mb-4 font-serif text-xl">
-          ✨
-        </div>
-        <h3 className="font-serif text-xl text-memory-primary mb-3">Self-Organizing Memoir</h3>
-        <p className="text-sm text-memory-muted max-w-md mx-auto mb-6">
-          Let the AI pipeline review your transcripts, dates, and scattered entries to synthesize a cohesive, biographical chapter layout. You retain full control to edit or chat with the AI before anything is published.
-        </p>
-        <button
-          onClick={runPipeline}
-          className="bg-memory-primary text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-memory-maroon transition shadow-sm cursor-pointer"
-        >
-          Generate Narrative Proposal
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-memory-card p-4 rounded-xl border border-memory-border shadow-2xs">
-        <div>
-          <h3 className="font-serif text-lg font-bold text-memory-primary">Proposed Narrative Layout</h3>
-          <p className="text-xs text-memory-muted">Review, chat with the AI to tweak, or edit manually.</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setProposal(null)}
-            className="px-4 py-2 text-sm text-memory-muted hover:text-memory-primary font-medium cursor-pointer"
-          >
-            Discard
-          </button>
-          <button 
-            onClick={handleApply}
-            disabled={saving || isRefining}
-            className="bg-memory-maroon text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-memory-primary shadow-sm transition cursor-pointer"
-          >
-            {saving ? "Applying..." : "Accept & Apply"}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-6">
-        {proposal.chapters.map((chapter, cIdx) => (
-          <div key={cIdx} className="bg-white border border-memory-border rounded-xl overflow-hidden shadow-xs">
-            {/* Title Header */}
-            <div className="bg-memory-light border-b border-memory-border px-5 py-3 flex items-center gap-3">
-              <span className="text-xs font-bold text-memory-accent uppercase tracking-widest">
-                Chapter {cIdx + 1}
-              </span>
-              <input 
-                type="text" 
-                value={chapter.title}
-                onChange={(e) => handleRename(cIdx, e.target.value)}
-                className="font-serif text-lg font-bold text-memory-primary bg-transparent outline-none flex-1 border-b border-dashed border-transparent hover:border-memory-border focus:border-memory-accent"
-              />
-            </div>
-            
-            {/* Synthesized Biography Narrative */}
-            <div className="p-5 border-b border-memory-border bg-white">
-              <h4 className="text-[10px] font-sans font-bold text-memory-muted uppercase tracking-wider mb-2">
-                Chapter Biography Narrative
-              </h4>
-              <textarea
-                value={chapter.summary || ""}
-                onChange={(e) => handleEditSummary(cIdx, e.target.value)}
-                rows={5}
-                className="w-full bg-transparent font-serif text-memory-primary leading-relaxed outline-none resize-none border border-transparent hover:border-memory-border/50 focus:border-memory-accent/50 p-2 rounded-md transition-colors"
-                placeholder="Synthesized story will appear here..."
-              />
-            </div>
-            
-            {/* Source Memories */}
-            <div className="p-5 bg-memory-bg space-y-2">
-              <h4 className="text-[10px] font-sans font-bold text-memory-muted uppercase tracking-wider mb-2">
-                {chapter.memories.length} Included Memories
-              </h4>
-              {chapter.memories.length === 0 ? (
-                <p className="text-sm text-memory-muted italic">No memories placed here.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 opacity-80">
-                  {chapter.memories.map((mem) => (
-                    <div key={mem.id} className="flex justify-between items-center bg-white border border-memory-border/50 px-3 py-2 rounded-lg">
-                      <p className="font-serif text-xs text-memory-primary truncate flex-1">
-                        {mem.title}
-                      </p>
-                      <span className="text-[9px] text-memory-muted font-mono uppercase ml-2">
-                        {mem.date || "Undated"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* AI Chat Interface */}
-      <div className="bg-memory-card border border-memory-border p-5 rounded-xl shadow-xs sticky bottom-4">
-        <h4 className="font-serif text-sm font-bold text-memory-primary mb-2">Iterate with AI</h4>
-        <p className="text-xs text-memory-muted mb-3">
-          Want a different tone? Prefer everything grouped into 2 chapters? Tell the editor AI.
-        </p>
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            disabled={isRefining || saving}
-            placeholder="e.g. Make chapter 2 sound more formal, and merge chapter 3 & 4..."
-            className="flex-1 bg-white border border-memory-border rounded-lg px-4 py-2 text-sm text-memory-primary outline-none focus:border-memory-accent"
-          />
-          <button
-            onClick={handleRefine}
-            disabled={isRefining || saving || !chatInput.trim()}
-            className="bg-memory-primary text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-memory-maroon disabled:opacity-50 transition cursor-pointer whitespace-nowrap"
-          >
-            {isRefining ? "Refining..." : "Send"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="src/app/(public)/handwritten-note/page.tsx">
 // Every folder inside app directory auto becomes Page URL on website
 import HandwrittenNote from "../../../features/onboarding/HandwrittenNote";
@@ -695,6 +474,519 @@ export function useComments(memoryId: string, memoirId: string) {
 }
 </file>
 
+<file path="src/features/dashboard/components/ChapterOrganizer.tsx">
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { api, ChapterProposalPayload } from "@/lib/api/client";
+
+interface FeedMediaAsset {
+  id: string;
+  kind: string;
+  playback_url?: string;
+  storage_key?: string;
+  caption?: string;
+  transcript?: {
+    display_text?: string;
+    raw_text?: string;
+    confidence?: number;
+    language?: string;
+  } | null;
+}
+
+interface FeedMemory {
+  id: string;
+  title?: string;
+  body_text?: string;
+  occurred_start?: string;
+  created_at?: string;
+  media_assets?: FeedMediaAsset[];
+}
+
+function resolveAssetUrl(asset?: FeedMediaAsset): string {
+  if (!asset) return "";
+  if (asset.playback_url) return asset.playback_url;
+  if (asset.storage_key) {
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "") || "";
+    const clean = asset.storage_key.replace(/^\/+/, "");
+    return base ? `${base}/storage/v1/object/public/memoir-media/${clean}` : "";
+  }
+  return "";
+}
+
+export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [proposal, setProposal] = useState<ChapterProposalPayload | null>(null);
+  const [feed, setFeed] = useState<FeedMemory[]>([]);
+  const [guidanceInput, setGuidanceInput] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
+
+  // Excluded media (per memoir, per memory) — used to remove/include media in AI chapter view
+  const [excludedMedia, setExcludedMedia] = useState<Record<string, string[]>>({});
+
+  // Hydrate proposal draft + excluded media + feed
+  useEffect(() => {
+    if (!memoirId) return;
+
+    const draft = localStorage.getItem(`ai_chapter_draft_${memoirId}`);
+    if (draft) {
+      try {
+        setProposal(JSON.parse(draft));
+      } catch {
+        localStorage.removeItem(`ai_chapter_draft_${memoirId}`);
+      }
+    }
+
+    const excluded = localStorage.getItem(`ai_excluded_media_${memoirId}`);
+    if (excluded) {
+      try {
+        setExcludedMedia(JSON.parse(excluded));
+      } catch {
+        localStorage.removeItem(`ai_excluded_media_${memoirId}`);
+      }
+    }
+
+    api.getMemoirFeed(memoirId)
+      .then((data) => setFeed(Array.isArray(data) ? data : []))
+      .catch((err) => console.error("Feed load failed:", err));
+  }, [memoirId]);
+
+  const saveDraft = (data: ChapterProposalPayload) => {
+    setProposal(data);
+    localStorage.setItem(`ai_chapter_draft_${memoirId}`, JSON.stringify(data));
+  };
+
+  const saveExcluded = (data: Record<string, string[]>) => {
+    setExcludedMedia(data);
+    localStorage.setItem(`ai_excluded_media_${memoirId}`, JSON.stringify(data));
+  };
+
+  const runPipeline = async (guidance?: string) => {
+    if (!memoirId) return;
+    setLoading(true);
+    try {
+      const base = await api.proposeChapters(memoirId);
+      const refined =
+        guidance && guidance.trim()
+          ? await api.refineChapters(memoirId, base, guidance.trim())
+          : base;
+      saveDraft(refined);
+    } catch (err: unknown) {
+      console.error("Chapter proposal error:", err);
+      const msg =
+        err instanceof Error ? err.message : "Failed to organize chapters. Please try again.";
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!memoirId || !proposal || !chatInput.trim()) return;
+    setIsRefining(true);
+    try {
+      const data = await api.refineChapters(memoirId, proposal, chatInput.trim());
+      saveDraft(data);
+      setChatInput("");
+    } catch (err: unknown) {
+      console.error("Chapter refine error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to refine chapters.";
+      alert(msg);
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  const handleApply = async () => {
+    if (!memoirId || !proposal) return;
+    setSaving(true);
+    try {
+      await api.applyChapters(memoirId, proposal);
+      alert("Chapter layout and narrative successfully applied!");
+      localStorage.removeItem(`ai_chapter_draft_${memoirId}`);
+      localStorage.removeItem(`ai_excluded_media_${memoirId}`);
+      localStorage.removeItem(`memoir_preview_${memoirId}`);
+      setProposal(null);
+      setExcludedMedia({});
+    } catch (err: unknown) {
+      console.error("Chapter apply error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to save chapters.";
+      alert(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    const ok = window.confirm("Discard this AI proposal? Your draft will be permanently lost.");
+    if (!ok) return;
+    localStorage.removeItem(`ai_chapter_draft_${memoirId}`);
+    localStorage.removeItem(`ai_excluded_media_${memoirId}`);
+    localStorage.removeItem(`memoir_preview_${memoirId}`);
+    setProposal(null);
+    setExcludedMedia({});
+  };
+
+  const handleRename = (idx: number, newTitle: string) => {
+    if (!proposal) return;
+    const updated = { ...proposal };
+    updated.chapters[idx].title = newTitle;
+    saveDraft(updated);
+  };
+
+  const handleEditSummary = (idx: number, newSummary: string) => {
+    if (!proposal) return;
+    const updated = { ...proposal };
+    updated.chapters[idx].summary = newSummary;
+    saveDraft(updated);
+  };
+
+  const removeMemoryFromChapter = (cIdx: number, mIdx: number) => {
+    if (!proposal) return;
+    const updated = { ...proposal };
+    updated.chapters[cIdx].memories.splice(mIdx, 1);
+    saveDraft(updated);
+  };
+
+  const addMemoryToChapter = (cIdx: number, memoryId: string) => {
+    if (!proposal || !memoryId) return;
+    const mem = feed.find((f) => f.id === memoryId);
+    if (!mem) return;
+    const updated = { ...proposal };
+    updated.chapters[cIdx].memories.push({
+      id: mem.id,
+      title: mem.title || "Untitled Entry",
+      date: mem.occurred_start || null,
+    });
+    saveDraft(updated);
+  };
+
+  const toggleMediaExclusion = (memoryId: string, assetId: string) => {
+    const current = excludedMedia[memoryId] || [];
+    let next: string[];
+    if (current.includes(assetId)) {
+      next = current.filter((id) => id !== assetId);
+    } else {
+      next = [...current, assetId];
+    }
+    const updated = { ...excludedMedia, [memoryId]: next };
+    if (next.length === 0) delete updated[memoryId];
+    saveExcluded(updated);
+  };
+
+  const handlePreview = () => {
+    if (!proposal) return;
+    localStorage.setItem(
+      `memoir_preview_${memoirId}`,
+      JSON.stringify({ proposal, feed, excludedMedia }),
+    );
+    router.push(`/final-memoir?preview=${memoirId}`);
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-memory-maroon/20 p-12 text-center shadow-xs">
+        <div className="animate-spin w-8 h-8 border-2 border-memory-maroon border-t-transparent rounded-full mx-auto mb-4" />
+        <h3 className="font-serif text-xl text-memory-primary mb-2">Agents are running...</h3>
+        <p className="text-sm text-memory-muted">
+          Reading scattered memories...
+          <br />
+          Synthesizing biographical narrative...
+          <br />
+          Organizing timeline...
+        </p>
+      </div>
+    );
+  }
+
+  if (!proposal) {
+    return (
+      <div className="bg-white rounded-2xl border border-memory-maroon/20 p-10 shadow-xs">
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 bg-memory-light text-memory-accent border border-memory-accent rounded-full flex items-center justify-center mx-auto mb-4 font-serif text-xl">
+            ✨
+          </div>
+          <h3 className="font-serif text-xl text-memory-primary mb-3">Self-Organizing Memoir</h3>
+          <p className="text-sm text-memory-muted max-w-md mx-auto">
+            Let the AI pipeline review your transcripts, dates, and scattered entries to synthesize
+            a cohesive, biographical chapter layout. You retain full control to edit or chat with
+            the AI before anything is published.
+          </p>
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2 max-w-2xl mx-auto">
+          <div className="bg-memory-light border border-memory-border rounded-xl p-5 flex flex-col">
+            <h4 className="font-serif text-sm font-bold text-memory-primary mb-1">
+              Guide Agents through Chat
+            </h4>
+            <p className="text-xs text-memory-muted mb-3 flex-1">
+              Tell the AI how you&apos;d like the chapters shaped before it runs.
+            </p>
+            <input
+              type="text"
+              value={guidanceInput}
+              onChange={(e) => setGuidanceInput(e.target.value)}
+              placeholder="e.g. Group memories into 3 chapters by decade..."
+              className="w-full bg-white border border-memory-border rounded-lg px-3 py-2 text-xs text-memory-primary outline-none focus:border-memory-accent mb-3"
+            />
+            <button
+              onClick={() => runPipeline(guidanceInput)}
+              disabled={loading || !guidanceInput.trim()}
+              className="bg-memory-primary text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-memory-maroon transition shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              Generate with Guidance
+            </button>
+          </div>
+
+          <div className="bg-memory-light border border-memory-border rounded-xl p-5 flex flex-col">
+            <h4 className="font-serif text-sm font-bold text-memory-primary mb-1">Let the AI Decide</h4>
+            <p className="text-xs text-memory-muted mb-3 flex-1">
+              Automatically organize every memory into chapters, no guidance needed.
+            </p>
+            <button
+              onClick={() => runPipeline()}
+              disabled={loading}
+              className="bg-memory-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-memory-maroon transition shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              Organize Memories
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Compute unassigned memories for reassignment dropdown
+  const assignedIds = new Set(
+    proposal.chapters.flatMap((c) => c.memories.map((m) => m.id)),
+  );
+  const unassignedMemories = feed.filter((f) => !assignedIds.has(f.id));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-memory-card p-4 rounded-xl border border-memory-border shadow-2xs">
+        <div>
+          <h3 className="font-serif text-lg font-bold text-memory-primary">Proposed Narrative Layout</h3>
+          <p className="text-xs text-memory-muted">Review, chat with the AI to tweak, or edit manually.</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handlePreview}
+            className="px-4 py-2 text-sm bg-memory-light text-memory-primary border border-memory-border rounded-lg font-medium hover:bg-memory-card cursor-pointer"
+          >
+            Preview Memoir
+          </button>
+          <button
+            onClick={handleDiscard}
+            className="px-4 py-2 text-sm text-memory-muted hover:text-memory-primary font-medium cursor-pointer"
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleApply}
+            disabled={saving || isRefining}
+            className="bg-memory-maroon text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-memory-primary shadow-sm transition cursor-pointer"
+          >
+            {saving ? "Applying..." : "Accept & Apply"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-6">
+        {proposal.chapters.map((chapter, cIdx) => (
+          <div key={cIdx} className="bg-white border border-memory-border rounded-xl overflow-hidden shadow-xs">
+            {/* Title Header */}
+            <div className="bg-memory-light border-b border-memory-border px-5 py-3 flex items-center gap-3">
+              <span className="text-xs font-bold text-memory-accent uppercase tracking-widest">
+                Chapter {cIdx + 1}
+              </span>
+              <input
+                type="text"
+                value={chapter.title}
+                onChange={(e) => handleRename(cIdx, e.target.value)}
+                className="font-serif text-lg font-bold text-memory-primary bg-transparent outline-none flex-1 border-b border-dashed border-transparent hover:border-memory-border focus:border-memory-accent"
+              />
+            </div>
+
+            {/* Synthesized Biography Narrative */}
+            <div className="p-5 border-b border-memory-border bg-white">
+              <h4 className="text-[10px] font-sans font-bold text-memory-muted uppercase tracking-wider mb-2">
+                Chapter Biography Narrative
+              </h4>
+              <textarea
+                value={chapter.summary || ""}
+                onChange={(e) => handleEditSummary(cIdx, e.target.value)}
+                rows={5}
+                className="w-full bg-transparent font-serif text-memory-primary leading-relaxed outline-none resize-none border border-transparent hover:border-memory-border/50 focus:border-memory-accent/50 p-2 rounded-md transition-colors"
+                placeholder="Synthesized story will appear here..."
+              />
+            </div>
+
+            {/* Source Memories with associated media */}
+            <div className="p-5 bg-memory-bg space-y-3">
+              <h4 className="text-[10px] font-sans font-bold text-memory-muted uppercase tracking-wider mb-2">
+                {chapter.memories.length} Included Memories
+              </h4>
+
+              {chapter.memories.length === 0 ? (
+                <p className="text-sm text-memory-muted italic">No memories placed here.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {chapter.memories.map((mem, mIdx) => {
+                    const fullMem = feed.find((f) => f.id === mem.id);
+                    const allAssets = fullMem?.media_assets || [];
+                    const excludedForThis = excludedMedia[mem.id] || [];
+
+                    const photoAssets = allAssets.filter((a) => a.kind === "photo");
+                    const audioAssets = allAssets.filter((a) => a.kind === "audio");
+
+                    return (
+                      <div
+                        key={mem.id}
+                        className="bg-white border border-memory-border/50 rounded-lg p-3 relative group flex flex-col gap-2"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="font-serif text-xs text-memory-primary font-semibold line-clamp-2 flex-1">
+                            {mem.title}
+                          </p>
+                          <button
+                            onClick={() => removeMemoryFromChapter(cIdx, mIdx)}
+                            className="text-red-400 opacity-0 group-hover:opacity-100 cursor-pointer text-sm font-bold px-1 hover:text-red-600 leading-none"
+                            title="Remove from chapter"
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        {/* Media strip */}
+                        {allAssets.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-1 pt-2 border-t border-stone-100">
+                            {photoAssets.map((p) => {
+                              const isExcluded = excludedForThis.includes(p.id);
+                              const url = resolveAssetUrl(p);
+                              if (!url) return null;
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => toggleMediaExclusion(mem.id, p.id)}
+                                  className={`relative w-10 h-10 rounded overflow-hidden border cursor-pointer transition ${
+                                    isExcluded
+                                      ? "border-red-300 opacity-40"
+                                      : "border-memory-border hover:border-memory-accent"
+                                  }`}
+                                  title={
+                                    isExcluded
+                                      ? "Excluded from memoir. Click to include."
+                                      : "Included. Click to exclude."
+                                  }
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={url} alt="thumb" className="w-full h-full object-cover" />
+                                  {isExcluded && (
+                                    <div className="absolute inset-0 bg-white/30 flex items-center justify-center text-red-500 text-xs font-bold">
+                                      ×
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+
+                            {audioAssets.map((a) => {
+                              const isExcluded = excludedForThis.includes(a.id);
+                              return (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  onClick={() => toggleMediaExclusion(mem.id, a.id)}
+                                  className={`text-[10px] px-2 py-1 rounded border cursor-pointer transition ${
+                                    isExcluded
+                                      ? "bg-red-50 border-red-200 text-red-500 opacity-70"
+                                      : "bg-amber-50 border-amber-200 text-amber-800 hover:border-memory-accent"
+                                  }`}
+                                  title={
+                                    isExcluded
+                                      ? "Audio excluded. Click to include."
+                                      : "Audio included. Click to exclude."
+                                  }
+                                >
+                                  {isExcluded ? "🚫 Audio" : "🎙️ Audio"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <span className="text-[9px] text-memory-muted font-mono mt-auto">
+                          {mem.date || "Undated"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Reassign unassigned memories */}
+              {unassignedMemories.length > 0 && (
+                <div className="pt-2">
+                  <select
+                    onChange={(e) => {
+                      addMemoryToChapter(cIdx, e.target.value);
+                      e.target.value = "";
+                    }}
+                    defaultValue=""
+                    className="w-full text-xs bg-white border border-memory-border p-2 rounded cursor-pointer text-memory-muted"
+                  >
+                    <option value="" disabled>
+                      + Include an unassigned memory...
+                    </option>
+                    {unassignedMemories.map((um) => (
+                      <option key={um.id} value={um.id}>
+                        {um.title || "Untitled Entry"} ({um.occurred_start || "Undated"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* AI Chat Interface */}
+      <div className="bg-memory-card border border-memory-border p-5 rounded-xl shadow-xs sticky bottom-4">
+        <h4 className="font-serif text-sm font-bold text-memory-primary mb-2">Iterate with AI</h4>
+        <p className="text-xs text-memory-muted mb-3">
+          Want a different tone? Prefer everything grouped into 2 chapters? Tell the editor AI.
+        </p>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            disabled={isRefining || saving}
+            placeholder="e.g. Make chapter 2 sound more formal, and merge chapter 3 & 4..."
+            className="flex-1 bg-white border border-memory-border rounded-lg px-4 py-2 text-sm text-memory-primary outline-none focus:border-memory-accent"
+          />
+          <button
+            onClick={handleRefine}
+            disabled={isRefining || saving || !chatInput.trim()}
+            className="bg-memory-primary text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-memory-maroon disabled:opacity-50 transition cursor-pointer whitespace-nowrap"
+          >
+            {isRefining ? "Refining..." : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
 <file path="src/features/dashboard/components/DashboardHeader.tsx">
 import React from "react";
 
@@ -734,86 +1026,6 @@ export function DashboardHeader({
         </button>
       </div>
     </header>
-  );
-}
-</file>
-
-<file path="src/features/dashboard/components/DashboardSidebar.tsx">
-import React from "react";
-import { useRouter } from "next/navigation";
-
-interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  memoirId?: string;
-}
-
-export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarProps) {
-  const router = useRouter();
-
-  const navItems = [
-    { id: "feed", label: "Story Feed" },
-    { id: "chapters", label: "AI Organizer" },
-    { id: "media", label: "Media Vault" },
-    { id: "team", label: "Collaborators" },
-  ];
-
-  return (
-    <aside className="w-64 bg-memory-card border-r border-memory-border hidden md:flex flex-col justify-between p-6 shadow-2xs">
-      <div>
-        <div className="flex items-center gap-3 mb-10">
-          <div className="w-9 h-9 rounded-lg bg-memory-primary text-memory-light flex items-center justify-center font-serif font-bold text-lg shadow-2xs">
-            M
-          </div>
-          <div>
-            <h1 className="font-serif font-bold text-lg text-memory-primary tracking-tight">Memoir</h1>
-            <span className="text-xs text-memory-accent font-medium uppercase tracking-wider">Owner Dashboard</span>
-          </div>
-        </div>
-
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                  isActive
-                    ? "bg-memory-light text-memory-primary font-semibold border border-memory-border shadow-2xs"
-                    : "text-memory-muted hover:bg-memory-light hover:text-memory-primary"
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* LIVE MEMOIR LINK */}
-        {memoirId && (
-          <div className="mt-6 pt-4 border-t border-memory-border">
-            <button
-              onClick={() => router.push("/final-memoir")}
-              className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold bg-memory-primary text-memory-light hover:bg-memory-maroon transition-colors cursor-pointer shadow-sm flex items-center gap-2"
-            >
-              <span className="text-base">📖</span>
-              View Live Memoir
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-memory-border pt-4 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-memory-border flex items-center justify-center font-semibold text-memory-primary text-sm">
-          DK
-        </div>
-        <div className="overflow-hidden">
-          <p className="text-sm font-medium text-memory-primary truncate">Daniyah Khan</p>
-          <p className="text-xs text-memory-muted truncate">Owner</p>
-        </div>
-      </div>
-    </aside>
   );
 }
 </file>
@@ -982,15 +1194,14 @@ interface BookCoverExperienceProps {
 export function BookCoverExperience({
   children,
   title = "A Lifetime Remembered",
-  subtitle = "A Living Archive of Stories & Voices"
+  subtitle = "A Living Archive of Stories & Voices",
 }: BookCoverExperienceProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-memory-bg relative overflow-x-hidden perspective-[2000px]">
-      
+    <div className="h-screen bg-memory-bg relative overflow-hidden perspective-[2000px]">
       {/* --- UNDERLYING DASHBOARD CONTENT --- */}
-      <div className="w-full min-h-screen">
+      <div className="w-full h-full overflow-y-auto">
         {children}
       </div>
 
@@ -1008,10 +1219,8 @@ export function BookCoverExperience({
         <div className="absolute left-0 top-0 bottom-0 w-12 bg-linear-to-r from-black/50 via-black/15 to-transparent pointer-events-none" />
 
         {/* Elegant Inner Foil Border Frame with Corner Accents */}
-          <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg">
-          </div>
-          <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg">
-          </div>
+        <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg" />
+        <div className="flex justify-between items-center text-memory-accent/60 font-serif text-lg" />
         <div />
 
         {/* Center Cover Art & Typography */}
@@ -1029,7 +1238,7 @@ export function BookCoverExperience({
 
         {/* Bottom Footer & Interactive Open Button */}
         <div className="text-center pb-6 z-10 space-y-4">
-          <motion.button 
+          <motion.button
             type="button"
             onClick={() => setIsOpen(true)}
             whileHover={{ scale: 1.05 }}
@@ -1042,9 +1251,7 @@ export function BookCoverExperience({
             Click to break the seal & enter
           </p>
         </div>
-
       </motion.div>
-
     </div>
   );
 }
@@ -1101,230 +1308,6 @@ export default function MemoirHeader({ isVisible }: MemoirHeaderProps) {
         </div>
       </div>
     </header>
-  );
-}
-</file>
-
-<file path="src/features/FinalMemoir/MemoirHero.tsx">
-// src/features/FinalMemoir/MemoirHero.tsx
-import React, { useState, useEffect } from "react";
-import { mockHeroPhotos } from "./mockData";
-import { HeroPhoto } from "./types";
-
-interface MemoirHeroProps {
-  onOpenGallery: () => void;
-  subjectName?: string;
-  description?: string;
-  dob?: string;
-  dod?: string;
-  heroPhotos?: HeroPhoto[];
-}
-
-export default function MemoirHero({
-  onOpenGallery,
-  subjectName = "Nadia",
-  description = "She gave everyone a second chance and made the world warmer.",
-  dob = "1947",
-  dod = "2024",
-  heroPhotos = mockHeroPhotos,
-}: MemoirHeroProps) {
-  const displayPhotos = heroPhotos.length > 0 ? heroPhotos : mockHeroPhotos;
-  const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
-  const [isCarouselHovered, setIsCarouselHovered] = useState(false);
-
-  useEffect(() => {
-    if (isCarouselHovered || displayPhotos.length === 0) return;
-    const timer = setInterval(() => {
-      setHeroPhotoIndex((prev) => (prev + 1) % (displayPhotos.length + 1));
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [isCarouselHovered, displayPhotos.length]);
-
-  return (
-    <section className="pt-36 pb-8 px-6 md:px-12 max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
-      <div className="flex-1 text-left w-full md:max-w-lg">
-        <h2 className="text-5xl md:text-6xl font-serif italic text-memory-maroon font-normal tracking-tight">
-          {subjectName}&apos;s Story
-        </h2>
-        <p className="mt-5 text-xl md:text-2xl font-serif italic text-stone-700 leading-relaxed">
-          {description}
-        </p>
-        <div className="flex items-center gap-4 mt-6">
-          <div className="h-px w-8 bg-stone-300"></div>
-          <p className="text-sm font-serif uppercase tracking-[0.2em] text-stone-500">
-            {dob} &nbsp;—&nbsp; {dod}
-          </p>
-        </div>
-      </div>
-
-      <div
-        className="w-full md:w-80 h-72 md:h-[340px] relative flex items-center justify-center shrink-0"
-        onMouseEnter={() => setIsCarouselHovered(true)}
-        onMouseLeave={() => setIsCarouselHovered(false)}
-      >
-        {/* Render Image Carousel */}
-        {heroPhotoIndex < displayPhotos.length && displayPhotos.length > 0 && (
-          <div className="relative w-full h-full flex items-center justify-center">
-            {displayPhotos.map((photo, idx) => {
-              // Ensure we have a string URL, even if it's missing the https protocol
-              if (!photo.url || typeof photo.url !== 'string') return null;
-              
-              return (
-                <div
-                  key={photo.id}
-                  className={`absolute transition-opacity duration-500 ease-in-out ${
-                    idx === heroPhotoIndex ? "opacity-100 z-20" : "opacity-0 z-10"
-                  }`}
-                >
-                  <figure className="w-56 md:w-72 bg-white p-2.5 shadow-xl border border-stone-200">
-                    <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                      {/* Using standard HTML img tag prevents Next.js from crashing on relative Supabase string errors */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.url}
-                        alt={photo.caption || "Archive photo"}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                           (e.target as HTMLElement).style.display = "none";
-                        }}
-                      />
-                    </div>
-                    {photo.caption && (
-                      <figcaption className="pt-3 pb-1 text-[11px] md:text-[12px] font-serif italic text-stone-600 text-center leading-tight line-clamp-1">
-                        {photo.caption}
-                      </figcaption>
-                    )}
-                  </figure>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Render Action Button at the end of the loop */}
-        {(heroPhotoIndex === displayPhotos.length || displayPhotos.length === 0) && (
-          <button
-            onClick={onOpenGallery}
-            className="w-56 md:w-72 h-48 md:h-56 bg-white border border-stone-200 shadow-xl flex flex-col items-center justify-center gap-4 transition-colors duration-300 group cursor-pointer"
-          >
-            <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#FAF9F6] border border-stone-200 flex items-center justify-center group-hover:bg-memory-maroon group-hover:text-white transition-colors text-stone-400">
-              <svg
-                className="w-5 h-5 md:w-6 md:h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.5"
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                ></path>
-              </svg>
-            </div>
-            <span className="font-serif uppercase tracking-[0.2em] text-[11px] md:text-[12px] font-bold text-stone-600 group-hover:text-memory-maroon">
-              View Photographic Archives
-            </span>
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-</file>
-
-<file path="src/features/FinalMemoir/MemoirSidebar.tsx">
-import React from "react";
-import { ShortQuote } from "./types";
-
-interface MemoirSidebarProps {
-  activeView: "timeline" | "chapters";
-  setActiveView: (val: "timeline" | "chapters") => void;
-  mockShortQuotes: ShortQuote[];
-  chapters?: string[];
-  decades?: string[];
-}
-
-export default function MemoirSidebar({ 
-  activeView, 
-  setActiveView, 
-  mockShortQuotes,
-  chapters = ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"],
-  decades = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"]
-}: MemoirSidebarProps) {
-  const displayDecades = decades.length > 0 ? decades : ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"];
-  const displayChapters = chapters.length > 0 ? chapters : ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"];
-
-  return (
-    <aside className="w-full lg:w-56 shrink-0 space-y-8">
-      <div className="bg-white p-4 rounded-sm border border-stone-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-        <div className="flex items-center p-0.5 bg-stone-100/50 border border-stone-200 rounded-sm mb-4">
-          {[
-            { id: "timeline", label: "Timeline" },
-            { id: "chapters", label: "Chapters" },
-          ].map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => setActiveView(v.id as "timeline" | "chapters")}
-              className={`flex-1 py-1.5 text-[9px] font-sans uppercase tracking-wider transition-all rounded-sm cursor-pointer ${
-                activeView === v.id ? "bg-white text-memory-maroon font-bold shadow-sm" : "text-stone-500 hover:text-memory-maroon"
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          {activeView === "timeline" && (
-            <ul className="space-y-2.5 text-[11px] font-serif">
-              {displayDecades.map((decade, idx) => (
-                <li key={`decade-${decade}-${idx}`} className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100">
-                  <span>{decade}</span>
-                  <span className="text-[9px] font-sans uppercase tracking-wider text-stone-400">Archive</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {activeView === "chapters" && (
-            <ul className="space-y-2.5 text-[11px] font-serif">
-              {displayChapters.map((chapter, idx) => (
-                <li key={`chapter-${chapter}-${idx}`} className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100">
-                  <span className="truncate pr-2">{chapter}</span>
-                  <span className="text-[9px] font-sans text-stone-400 shrink-0">
-                    {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="pt-2">
-        <label className="block text-[11px] font-sans uppercase tracking-[0.2em] text-stone-500 font-semibold mb-6 border-b border-stone-200 pb-2">
-          Fleeting Thoughts
-        </label>
-        <div className="space-y-10">
-          {mockShortQuotes.map((quote) => (
-            <div key={quote.id} className="relative">
-              <p className="text-[16px] font-serif italic text-stone-700 leading-relaxed">
-                <span className="text-memory-maroon/40 font-serif mr-0.5">“</span>
-                {quote.text}
-                <span className="text-memory-maroon/40 font-serif ml-0.5">”</span>
-              </p>
-              <div className="mt-2 flex justify-end items-center gap-2">
-                <span className="w-3 h-px bg-memory-maroon/30"></span>
-                <span className="text-[9px] font-sans font-semibold text-stone-400 uppercase tracking-wider">
-                  {quote.author}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </aside>
   );
 }
 </file>
@@ -1459,40 +1442,6 @@ export const scatterPositions = [
   { top: "70%", left: "20%", rotate: "-8deg" },
   { top: "80%", left: "60%", rotate: "5deg" },
 ];
-</file>
-
-<file path="src/features/FinalMemoir/types.ts">
-export interface MemoryImage {
-  id: string;
-  url: string;
-  caption?: string;
-}
-
-export interface MemoryItem {
-  id: string;
-  author: string;
-  title?: string;
-  text: string;
-  reactionsCount: number;
-  imageUrl?: string;
-  imageCaption?: string;
-  images?: MemoryImage[];
-  chapter: string;
-  chapterSubtitle?: string;
-  date: string;
-}
-
-export interface ShortQuote {
-  id: string;
-  author: string;
-  text: string;
-}
-
-export interface HeroPhoto {
-  id: string;
-  url: string;
-  caption: string;
-}
 </file>
 
 <file path="src/features/landingPage/LandingPageScroll.tsx">
@@ -2502,310 +2451,82 @@ export default function PublicLayout({
 }
 </file>
 
-<file path="src/features/dashboard/MemoryFeedList.tsx">
-/**
- * @file MemoryFeedList.tsx
- * @description Dynamic feed component that renders distinct visual cards for written, audio, and photo memories.
- */
+<file path="src/features/dashboard/components/DashboardSidebar.tsx">
+import React from "react";
+import { useRouter } from "next/navigation";
 
-"use client";
-
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api/client";
-
-interface MediaAsset {
-  id: string;
-  kind: "photo" | "audio" | "video" | "document";
-  storage_key?: string;
-  playback_url?: string;
-  caption?: string;
-  transcript?: {
-    display_text?: string;
-    raw_text?: string;
-    confidence?: number;
-    language?: string;
-  } | null;
+interface SidebarProps {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  memoirId?: string;
 }
 
-interface MemoryRecord {
-  id: string;
-  title?: string;
-  body_text?: string;
-  text?: string;
-  occurred_start?: string;
-  created_at: string;
-  media_assets?: MediaAsset[];
-  memory_media?: Array<{ media_asset?: MediaAsset }>;
-}
+export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarProps) {
+  const router = useRouter();
 
-/**
- * Safely resolves media URLs to prevent Next.js image parser crashes.
- */
-function resolveMediaUrl(asset?: MediaAsset): string | null {
-  if (!asset) return null;
-
-  // 1. Prefer playback_url if valid absolute URL
-  if (asset.playback_url && typeof asset.playback_url === "string") {
-    if (
-      asset.playback_url.startsWith("http://") ||
-      asset.playback_url.startsWith("https://") ||
-      asset.playback_url.startsWith("/")
-    ) {
-      return asset.playback_url;
-    }
-  }
-
-  // 2. If storage_key is an absolute URL or local path
-  if (asset.storage_key && typeof asset.storage_key === "string") {
-    if (
-      asset.storage_key.startsWith("http://") ||
-      asset.storage_key.startsWith("https://") ||
-      asset.storage_key.startsWith("/")
-    ) {
-      return asset.storage_key;
-    }
-
-    // 3. Fallback: Convert relative storage key to Supabase public storage URL
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl) {
-      const cleanBase = supabaseUrl.replace(/\/+$/, "");
-      const cleanKey = asset.storage_key.replace(/^\/+/, "");
-      return `${cleanBase}/storage/v1/object/public/memoir-media/${cleanKey}`;
-    }
-  }
-
-  return null;
-}
-
-export default function MemoryFeedList({ memoirId }: { memoirId: string }) {
-  const [memories, setMemories] = useState<MemoryRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!memoirId) return;
-
-    async function loadFeed() {
-      try {
-        setLoading(true);
-        const data = await api.getMemoirFeed(memoirId);
-        setMemories(Array.isArray(data) ? data : []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load feed.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadFeed();
-  }, [memoirId]);
-
-  if (loading) {
-    return (
-      <div className="text-center py-12 text-memory-muted text-sm">
-        Loading precious memories...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 text-red-700 rounded-xl text-xs text-center">
-        {error}
-      </div>
-    );
-  }
-
-  if (memories.length === 0) {
-    return (
-      <div className="text-center py-16 bg-white rounded-2xl border border-memory-maroon/20 p-8">
-        <p className="font-serif text-memory-primary text-lg mb-2">
-          No memories shared yet
-        </p>
-        <p className="text-xs text-memory-muted">
-          Be the first to add a story, voice note, or photo to this memoir.
-        </p>
-      </div>
-    );
-  }
+  const navItems = [
+    { id: "feed", label: "Story Feed" },
+    { id: "chapters", label: "AI Organizer" },
+    { id: "media", label: "Media Vault" },
+    { id: "team", label: "Collaborators" },
+  ];
 
   return (
-    <div className="space-y-8 w-full max-w-4xl mx-auto">
-      {memories.map((memory) => {
-        const mediaItems =
-          memory.media_assets ||
-          memory.memory_media
-            ?.map((j) => j.media_asset)
-            .filter((m): m is MediaAsset => Boolean(m)) ||
-          [];
-        const audioAsset = mediaItems.find((m) => m.kind === "audio");
-        const photoAsset = mediaItems.find((m) => m.kind === "photo");
-
-        const isAudioMemory = Boolean(audioAsset);
-        const isPhotoMemory = Boolean(photoAsset);
-
-        const photoUrl = resolveMediaUrl(photoAsset);
-        const audioUrl = resolveMediaUrl(audioAsset);
-
-        const dateFormatted = memory.occurred_start
-          ? new Date(memory.occurred_start).toLocaleDateString(undefined, {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })
-          : new Date(memory.created_at).toLocaleDateString();
-
-        const resolvedText = memory.body_text || memory.text || "";
-
-        return (
-          <div key={memory.id} className="relative w-full">
-            <div className="absolute inset-x-2 top-2 bottom-1 rounded-sm border border-memory-maroon/20 bg-memory-maroon/5" />
-
-            <div className="relative z-10 bg-white p-6 md:p-8 rounded-2xl border border-memory-maroon/20 shadow-xs space-y-4">
-              {/* Meta Header */}
-              <div className="flex items-center justify-between border-b border-memory-maroon/10 pb-3">
-                <span className="text-[10px] uppercase tracking-widest text-memory-muted font-mono">
-                  {dateFormatted}
-                </span>
-
-                {isAudioMemory && (
-                  <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
-                    🎙️ Voice Recording
-                  </span>
-                )}
-                {isPhotoMemory && !isAudioMemory && (
-                  <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
-                    📷 Photo Memory
-                  </span>
-                )}
-                {!isAudioMemory && !isPhotoMemory && (
-                  <span className="text-[10px] bg-memory-maroon/10 text-memory-maroon px-2 py-0.5 rounded-full font-medium">
-                    ✍️ Written Story
-                  </span>
-                )}
-              </div>
-
-              {/* Title & Body Text */}
-              <div>
-                {memory.title && (
-                  <h3 className="font-serif font-bold text-lg text-memory-primary mb-2">
-                    {memory.title}
-                  </h3>
-                )}
-                {resolvedText && (
-                  <p className="font-serif text-sm text-memory-primary/90 leading-relaxed whitespace-pre-line">
-                    {resolvedText}
-                  </p>
-                )}
-              </div>
-
-              {/* PHOTO MEMORY VISUAL */}
-              {photoAsset && photoUrl && (
-                <div className="mt-4 pt-4 border-t border-memory-maroon/10 text-center">
-                  <div className="rounded-xl overflow-hidden relative w-full h-72 max-w-md mx-auto border border-memory-maroon/15 bg-memory-bg">
-                    {/* Plain img tag: next/image's optimizer silently fails on
-                        Supabase Storage URLs that aren't whitelisted in next.config.js,
-                        which is why photos weren't appearing in the feed. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photoUrl}
-                      alt={photoAsset.caption || memory.title || "Memory photo"}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  </div>
-                  {photoAsset.caption && (
-                    <p className="text-xs italic text-memory-muted mt-2">
-                      {photoAsset.caption}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* AUDIO MEMORY VISUAL & TRANSCRIPT */}
-              {audioAsset && audioUrl && (
-                <div className="mt-4 pt-4 border-t border-memory-maroon/10 bg-memory-light p-4 rounded-xl space-y-3">
-                  <div className="flex items-center gap-4">
-                    <audio
-                      id={`audio-player-${memory.id}`}
-                      src={audioUrl}
-                      onEnded={() => setPlayingAudioId(null)}
-                      preload="metadata"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const audioEl = document.getElementById(
-                          `audio-player-${memory.id}`
-                        ) as HTMLAudioElement;
-                        if (!audioEl) return;
-
-                        if (playingAudioId === memory.id) {
-                          audioEl.pause();
-                          setPlayingAudioId(null);
-                        } else {
-                          document
-                            .querySelectorAll("audio")
-                            .forEach((el) => el.pause());
-                          audioEl.play();
-                          setPlayingAudioId(memory.id);
-                        }
-                      }}
-                      className="w-10 h-10 rounded-full bg-memory-primary text-memory-light flex items-center justify-center hover:bg-memory-maroon transition shadow-sm cursor-pointer shrink-0"
-                      aria-label="Play audio note"
-                    >
-                      <span className="text-xs font-bold">
-                        {playingAudioId === memory.id ? "❚❚" : "▶"}
-                      </span>
-                    </button>
-
-                    <div className="flex-1 w-full space-y-1">
-                      <div className="flex justify-between text-[11px] text-memory-muted font-mono">
-                        <span>
-                          {playingAudioId === memory.id
-                            ? "Playing voice recording..."
-                            : "Voice Note Recording"}
-                        </span>
-                        <span>AssemblyAI Audio</span>
-                      </div>
-                      <audio
-                        controls
-                        src={audioUrl}
-                        className="w-full h-8 mt-1 opacity-90"
-                      />
-                    </div>
-                  </div>
-
-                  {/* AI TRANSCRIPTION DISPLAY BOX */}
-                  <div className="bg-white/80 border border-memory-maroon/10 rounded-lg p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-memory-accent">
-                        ✨ AI Transcript (AssemblyAI)
-                      </span>
-                      {audioAsset.transcript?.confidence && (
-                        <span className="text-[10px] text-memory-muted font-mono">
-                          Confidence:{" "}
-                          {Math.round(
-                            audioAsset.transcript.confidence * 100
-                          )}
-                          %
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="font-serif text-xs text-memory-primary/90 italic leading-relaxed">
-                      {audioAsset.transcript?.display_text ||
-                        "Transcript not available yet."}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+    <aside className="w-64 bg-memory-card border-r border-memory-border hidden md:flex flex-col justify-between p-6 shadow-2xs">
+      <div>
+        <div className="flex items-center gap-3 mb-10">
+          <div className="w-9 h-9 rounded-lg bg-memory-primary text-memory-light flex items-center justify-center font-serif font-bold text-lg shadow-2xs">
+            M
           </div>
-        );
-      })}
-    </div>
+          <div>
+            <h1 className="font-serif font-bold text-lg text-memory-primary tracking-tight">Memoir</h1>
+            <span className="text-xs text-memory-accent font-medium uppercase tracking-wider">Owner Dashboard</span>
+          </div>
+        </div>
+
+        <nav className="space-y-1">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                  isActive
+                    ? "bg-memory-light text-memory-primary font-semibold border border-memory-border shadow-2xs"
+                    : "text-memory-muted hover:bg-memory-light hover:text-memory-primary"
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* LIVE MEMOIR LINK */}
+        {memoirId && (
+          <div className="mt-6 pt-4 border-t border-memory-border">
+            <button
+              onClick={() => router.push("/final-memoir")}
+              className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold bg-memory-primary text-memory-light hover:bg-memory-maroon transition-colors cursor-pointer shadow-sm flex items-center gap-2"
+            >
+              <span className="text-base">📖</span>
+              View Live Memoir
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-memory-border pt-4 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-memory-border flex items-center justify-center font-semibold text-memory-primary text-sm">
+          DK
+        </div>
+        <div className="overflow-hidden">
+          <p className="text-sm font-medium text-memory-primary truncate">Daniyah Khan</p>
+          <p className="text-xs text-memory-muted truncate">Owner</p>
+        </div>
+      </div>
+    </aside>
   );
 }
 </file>
@@ -2824,15 +2545,21 @@ interface MemoirActionBarProps {
 }
 
 export default function MemoirActionBar({
-  pdfFileName, setPdfFileName, triggerExport, isExporting,
-  searchQuery, handleSearchTyping, isTyping
+  pdfFileName,
+  setPdfFileName,
+  triggerExport,
+  isExporting,
+  searchQuery,
+  handleSearchTyping,
+  isTyping,
 }: MemoirActionBarProps) {
   return (
-    <div className="max-w-6xl mx-auto px-6 md:px-10 pt-2 pb-2 flex flex-col lg:flex-row justify-between items-end gap-6 relative z-10">
-      
+    <div className="max-w-7xl mx-auto px-6 md:px-10 pt-2 pb-2 flex flex-col lg:flex-row justify-between items-end gap-6 relative z-10">
       {/* LEFT: Compact PDF Export Trigger */}
       <div className="flex items-center gap-4 bg-white/70 backdrop-blur-sm px-4 py-2.5 border border-stone-200 shadow-sm rounded-sm mb-1 w-full lg:w-auto">
-        <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-600 font-semibold">Printable Archive</span>
+        <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-600 font-semibold">
+          Printable Archive
+        </span>
         <div className="h-4 w-px bg-stone-300"></div>
         <input
           type="text"
@@ -2852,28 +2579,32 @@ export default function MemoirActionBar({
       </div>
 
       {/* RIGHT: Vintage Paper Scrap Semantic Search Box */}
-      <div 
+      <div
         className="relative p-4 shadow-[1px_2px_8px_rgba(0,0,0,0.08)] bg-white border-2 border-[#EAE3D9] w-full lg:w-80"
         style={{
           borderRadius: "2px 20px 4px 15px / 15px 4px 20px 3px",
-          backgroundImage: `url("data:image/svg+xml,%3 viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3 width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E")`,
+          backgroundImage: `url("data:image/svg+xml,%3 viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3C%3 width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E")`,
         }}
       >
         <div className="absolute -top-2 -left-2 w-4 h-4 bg-[#FAF9F6] rounded-full"></div>
         <div className="absolute -bottom-2 -right-2 w-5 h-5 bg-[#FAF9F6] rounded-full"></div>
-        
+
         <div className="relative">
           <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none max-w-full overflow-visible">
             <span className="font-serif text-[15px] px-1 py-1 text-transparent whitespace-pre">
               {searchQuery}
             </span>
-            <div className={`transition-opacity duration-300 z-30 opacity-100 ${isTyping ? 'animate-scribble' : ''}`}>
-               <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-memory-maroon drop-shadow-md -mt-5 ml-0 transform -rotate-12">
-                 <path d="M20.2 2.8c-1.1-.8-2.6-.9-3.8-.2l-9.1 5.3c-.6.3-1.1.8-1.4 1.4L2.3 16.5c-.3.5-.2 1.1.2 1.5.4.4 1 .5 1.5.2l7.2-3.6c.6-.3 1.1-.8 1.4-1.4l5.3-9.1c.7-1.2.6-2.7-.2-3.8zm-6.2 9l-5.4 2.7 2.7-5.4 6.7-3.9-3.9 6.6zM21 4.4c.4.6.4 1.4 0 2L16 11.5l-2.5-4.3L18.6 2.1c.6-.4 1.4-.3 2 .2.2.3.4.6.4 1z"/>
-               </svg>
+            <div className={`transition-opacity duration-300 z-30 opacity-100 ${isTyping ? "animate-scribble" : ""}`}>
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="w-6 h-6 text-memory-maroon drop-shadow-md -mt-5 ml-0 transform -rotate-12"
+              >
+                <path d="M20.2 2.8c-1.1-.8-2.6-.9-3.8-.2l-9.1 5.3c-.6.3-1.1.8-1.4 1.4L2.3 16.5c-.3.5-.2 1.1.2 1.5.4.4 1 .5 1.5.2l7.2-3.6c.6-.3 1.1-.8 1.4-1.4l5.3-9.1c.7-1.2.6-2.7-.2-3.8zm-6.2 9l-5.4 2.7 2.7-5.4 6.7-3.9-3.9 6.6zM21 4.4c.4.6.4 1.4 0 2L16 11.5l-2.5-4.3L18.6 2.1c.6-.4 1.4-.3 2 .2.2.3.4.6.4 1z" />
+              </svg>
             </div>
           </div>
-          <input 
+          <input
             type="text"
             placeholder="Search the archive..."
             value={searchQuery}
@@ -2884,6 +2615,243 @@ export default function MemoirActionBar({
         </div>
       </div>
     </div>
+  );
+}
+</file>
+
+<file path="src/features/FinalMemoir/MemoirHero.tsx">
+// src/features/FinalMemoir/MemoirHero.tsx
+import React, { useState, useEffect } from "react";
+import { mockHeroPhotos } from "./mockData";
+import { HeroPhoto } from "./types";
+
+interface MemoirHeroProps {
+  onOpenGallery: () => void;
+  subjectName?: string;
+  description?: string;
+  dob?: string;
+  dod?: string;
+  heroPhotos?: HeroPhoto[];
+}
+
+export default function MemoirHero({
+  onOpenGallery,
+  subjectName = "Nadia",
+  description = "She gave everyone a second chance and made the world warmer.",
+  dob = "1947",
+  dod = "2024",
+  heroPhotos = mockHeroPhotos,
+}: MemoirHeroProps) {
+  const displayPhotos = heroPhotos.length > 0 ? heroPhotos : mockHeroPhotos;
+  const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
+  const [isCarouselHovered, setIsCarouselHovered] = useState(false);
+
+  useEffect(() => {
+    if (isCarouselHovered || displayPhotos.length === 0) return;
+    const timer = setInterval(() => {
+      setHeroPhotoIndex((prev) => (prev + 1) % (displayPhotos.length + 1));
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [isCarouselHovered, displayPhotos.length]);
+
+  return (
+    <section className="pt-36 pb-8 px-6 md:px-12 max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
+      <div className="flex-1 text-left w-full md:max-w-lg">
+        <h2 className="text-5xl md:text-6xl font-serif italic text-memory-maroon font-normal tracking-tight">
+          {subjectName}&apos;s Story
+        </h2>
+        <p className="mt-5 text-xl md:text-2xl font-serif italic text-stone-700 leading-relaxed">
+          {description}
+        </p>
+        <div className="flex items-center gap-4 mt-6">
+          <div className="h-px w-8 bg-stone-300"></div>
+          <p className="text-sm font-serif uppercase tracking-[0.2em] text-stone-500">
+            {dob} &nbsp;—&nbsp; {dod}
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="w-full md:w-80 h-72 md:h-[340px] relative flex items-center justify-center shrink-0"
+        onMouseEnter={() => setIsCarouselHovered(true)}
+        onMouseLeave={() => setIsCarouselHovered(false)}
+      >
+        {/* Render Image Carousel */}
+        {heroPhotoIndex < displayPhotos.length && displayPhotos.length > 0 && (
+          <div className="relative w-full h-full flex items-center justify-center">
+            {displayPhotos.map((photo, idx) => {
+              if (!photo.url || typeof photo.url !== "string") return null;
+
+              return (
+                <div
+                  key={photo.id}
+                  className={`absolute transition-opacity duration-500 ease-in-out ${
+                    idx === heroPhotoIndex ? "opacity-100 z-20" : "opacity-0 z-10"
+                  }`}
+                >
+                  <figure className="w-56 md:w-72 bg-white p-2.5 shadow-xl border border-stone-200">
+                    <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.url}
+                        alt={photo.caption || "Archive photo"}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                    {photo.caption && (
+                      <figcaption className="pt-3 pb-1 text-[11px] md:text-[12px] font-serif italic text-stone-600 text-center leading-tight line-clamp-1">
+                        {photo.caption}
+                      </figcaption>
+                    )}
+                  </figure>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Render Action Button at the end of the loop */}
+        {(heroPhotoIndex === displayPhotos.length || displayPhotos.length === 0) && (
+          <button
+            onClick={onOpenGallery}
+            className="w-56 md:w-72 h-48 md:h-56 bg-white border border-stone-200 shadow-xl flex flex-col items-center justify-center gap-4 transition-colors duration-300 group cursor-pointer"
+          >
+            <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#FAF9F6] border border-stone-200 flex items-center justify-center group-hover:bg-memory-maroon group-hover:text-white transition-colors text-stone-400">
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                ></path>
+              </svg>
+            </div>
+            <span className="font-serif uppercase tracking-[0.2em] text-[11px] md:text-[12px] font-bold text-stone-600 group-hover:text-memory-maroon">
+              View Photographic Archives
+            </span>
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+</file>
+
+<file path="src/features/FinalMemoir/MemoirSidebar.tsx">
+import React from "react";
+import { ShortQuote } from "./types";
+
+interface MemoirSidebarProps {
+  activeView: "timeline" | "chapters";
+  setActiveView: (val: "timeline" | "chapters") => void;
+  mockShortQuotes: ShortQuote[];
+  chapters?: string[];
+  decades?: string[];
+  activeDecade?: string | null;
+  onSelectChapter?: (chapter: string) => void;
+  onSelectDecade?: (decade: string) => void;
+}
+
+export default function MemoirSidebar({
+  activeView,
+  setActiveView,
+  mockShortQuotes,
+  chapters = ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"],
+  decades = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"],
+  activeDecade = null,
+  onSelectChapter,
+  onSelectDecade,
+}: MemoirSidebarProps) {
+  const displayDecades = decades.length > 0 ? decades : ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"];
+  const displayChapters =
+    chapters.length > 0 ? chapters : ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"];
+
+  return (
+    <aside className="w-full lg:w-56 shrink-0 space-y-8">
+      <div className="bg-white p-4 rounded-sm border border-stone-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <div className="flex items-center p-0.5 bg-stone-100/50 border border-stone-200 rounded-sm mb-4">
+          {[
+            { id: "timeline", label: "Timeline" },
+            { id: "chapters", label: "Chapters" },
+          ].map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setActiveView(v.id as "timeline" | "chapters")}
+              className={`flex-1 py-1.5 text-[9px] font-sans uppercase tracking-wider transition-all rounded-sm cursor-pointer ${
+                activeView === v.id ? "bg-white text-memory-maroon font-bold shadow-sm" : "text-stone-500 hover:text-memory-maroon"
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          {activeView === "timeline" && (
+            <ul className="space-y-2.5 text-[11px] font-serif">
+              {displayDecades.map((decade, idx) => (
+                <li
+                  key={`decade-${decade}-${idx}`}
+                  onClick={() => onSelectDecade?.(decade)}
+                  className={`flex items-center justify-between cursor-pointer pb-1 border-b border-stone-100 ${
+                    activeDecade === decade ? "text-memory-maroon font-semibold" : "text-stone-600 hover:text-memory-maroon"
+                  }`}
+                >
+                  <span>{decade}</span>
+                  <span className="text-[9px] font-sans uppercase tracking-wider text-stone-400">
+                    {activeDecade === decade ? "Selected" : "Archive"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {activeView === "chapters" && (
+            <ul className="space-y-2.5 text-[11px] font-serif">
+              {displayChapters.map((chapter, idx) => (
+                <li
+                  key={`chapter-${chapter}-${idx}`}
+                  onClick={() => onSelectChapter?.(chapter)}
+                  className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100"
+                >
+                  <span className="truncate pr-2">{chapter}</span>
+                  <span className="text-[9px] font-sans text-stone-400 shrink-0">
+                    {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <label className="block text-[11px] font-sans uppercase tracking-[0.2em] text-stone-500 font-semibold mb-6 border-b border-stone-200 pb-2">
+          Fleeting Thoughts
+        </label>
+        <div className="space-y-10">
+          {mockShortQuotes.map((quote) => (
+            <div key={quote.id} className="relative">
+              <p className="text-[16px] font-serif italic text-stone-700 leading-relaxed">
+                <span className="text-memory-maroon/40 font-serif mr-0.5">“</span>
+                {quote.text}
+                <span className="text-memory-maroon/40 font-serif ml-0.5">”</span>
+              </p>
+              <div className="mt-2 flex justify-end items-center gap-2">
+                <span className="w-3 h-px bg-memory-maroon/30"></span>
+                <span className="text-[9px] font-sans font-semibold text-stone-400 uppercase tracking-wider">
+                  {quote.author}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
   );
 }
 </file>
@@ -2951,6 +2919,53 @@ export default function ScatteredGallery({ heroPhotos, onClose }: ScatteredGalle
       </div>
     </div>
   );
+}
+</file>
+
+<file path="src/features/FinalMemoir/types.ts">
+export interface MemoryImage {
+  id: string;
+  url: string;
+  caption?: string;
+}
+
+export interface MemoryAudio {
+  id: string;
+  url: string;
+  caption?: string;
+  transcript?: {
+    display_text?: string;
+    raw_text?: string;
+    confidence?: number;
+    language?: string;
+  } | null;
+}
+
+export interface MemoryItem {
+  id: string;
+  author: string;
+  title?: string;
+  text: string;
+  reactionsCount: number;
+  imageUrl?: string;
+  imageCaption?: string;
+  images?: MemoryImage[];
+  audioClips?: MemoryAudio[];
+  chapter: string;
+  chapterSubtitle?: string;
+  date: string;
+}
+
+export interface ShortQuote {
+  id: string;
+  author: string;
+  text: string;
+}
+
+export interface HeroPhoto {
+  id: string;
+  url: string;
+  caption: string;
 }
 </file>
 
@@ -3499,6 +3514,420 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
         )}
       </div>
 
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/dashboard/MemoryFeedList.tsx">
+/**
+ * @file MemoryFeedList.tsx
+ * @description Dynamic feed component that renders distinct visual cards for written, audio, and photo memories,
+ * with inline edit support for title, body, and date.
+ */
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api/client";
+
+interface MediaAsset {
+  id: string;
+  kind: "photo" | "audio" | "video" | "document";
+  storage_key?: string;
+  playback_url?: string;
+  caption?: string;
+  transcript?: {
+    display_text?: string;
+    raw_text?: string;
+    confidence?: number;
+    language?: string;
+  } | null;
+}
+
+interface MemoryRecord {
+  id: string;
+  title?: string;
+  body_text?: string;
+  text?: string;
+  occurred_start?: string;
+  created_at: string;
+  media_assets?: MediaAsset[];
+  memory_media?: Array<{ media_asset?: MediaAsset }>;
+}
+
+/**
+ * Safely resolves media URLs to prevent Next.js image parser crashes.
+ */
+function resolveMediaUrl(asset?: MediaAsset): string | null {
+  if (!asset) return null;
+
+  if (asset.playback_url && typeof asset.playback_url === "string") {
+    if (
+      asset.playback_url.startsWith("http://") ||
+      asset.playback_url.startsWith("https://") ||
+      asset.playback_url.startsWith("/")
+    ) {
+      return asset.playback_url;
+    }
+  }
+
+  if (asset.storage_key && typeof asset.storage_key === "string") {
+    if (
+      asset.storage_key.startsWith("http://") ||
+      asset.storage_key.startsWith("https://") ||
+      asset.storage_key.startsWith("/")
+    ) {
+      return asset.storage_key;
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl) {
+      const cleanBase = supabaseUrl.replace(/\/+$/, "");
+      const cleanKey = asset.storage_key.replace(/^\/+/, "");
+      return `${cleanBase}/storage/v1/object/public/memoir-media/${cleanKey}`;
+    }
+  }
+
+  return null;
+}
+
+export default function MemoryFeedList({
+  memoirId,
+  onCountChange,
+}: {
+  memoirId: string;
+  onCountChange?: (count: number) => void;
+}) {
+  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<{
+    title: string;
+    body_text: string;
+    occurred_start: string;
+  }>({ title: "", body_text: "", occurred_start: "" });
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!memoirId) return;
+
+    async function loadFeed() {
+      try {
+        setLoading(true);
+        const data = await api.getMemoirFeed(memoirId);
+        const list = Array.isArray(data) ? data : [];
+        setMemories(list);
+        onCountChange?.(list.length);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load feed.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadFeed();
+  }, [memoirId, onCountChange]);
+
+  const handleDelete = async (memoryId: string) => {
+    const ok = window.confirm("Delete this memory? This cannot be undone.");
+    if (!ok) return;
+
+    try {
+      await api.deleteMemory(memoryId);
+      const next = memories.filter((m) => m.id !== memoryId);
+      setMemories(next);
+      onCountChange?.(next.length);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete memory.");
+    }
+  };
+
+  const startEdit = (mem: MemoryRecord) => {
+    setEditingId(mem.id);
+    setEditData({
+      title: mem.title || "",
+      body_text: mem.body_text || mem.text || "",
+      occurred_start: mem.occurred_start ? mem.occurred_start.split("T")[0] : "",
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditData({ title: "", body_text: "", occurred_start: "" });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    setSavingEdit(true);
+    try {
+      const payload = {
+        title: editData.title,
+        body_text: editData.body_text,
+        occurred_start: editData.occurred_start || null,
+      };
+      await api.updateMemory(editingId, payload);
+      setMemories((prev) =>
+        prev.map((m) =>
+          m.id === editingId
+            ? {
+                ...m,
+                title: editData.title,
+                body_text: editData.body_text,
+                occurred_start: editData.occurred_start || undefined,
+              }
+            : m,
+        ),
+      );
+      cancelEdit();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update memory.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-12 text-memory-muted text-sm">Loading precious memories...</div>;
+  }
+
+  if (error) {
+    return <div className="p-4 bg-red-50 text-red-700 rounded-xl text-xs text-center">{error}</div>;
+  }
+
+  if (memories.length === 0) {
+    return (
+      <div className="text-center py-16 bg-white rounded-2xl border border-memory-maroon/20 p-8">
+        <p className="font-serif text-memory-primary text-lg mb-2">No memories shared yet</p>
+        <p className="text-xs text-memory-muted">
+          Be the first to add a story, voice note, or photo to this memoir.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 w-full max-w-4xl mx-auto">
+      {memories.map((memory) => {
+        const mediaItems =
+          memory.media_assets ||
+          memory.memory_media?.map((j) => j.media_asset).filter((m): m is MediaAsset => Boolean(m)) ||
+          [];
+        const audioAsset = mediaItems.find((m) => m.kind === "audio");
+        const photoAsset = mediaItems.find((m) => m.kind === "photo");
+
+        const isAudioMemory = Boolean(audioAsset);
+        const isPhotoMemory = Boolean(photoAsset);
+
+        const photoUrl = resolveMediaUrl(photoAsset);
+        const audioUrl = resolveMediaUrl(audioAsset);
+
+        const dateFormatted = memory.occurred_start
+          ? new Date(memory.occurred_start).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : new Date(memory.created_at).toLocaleDateString();
+
+        const resolvedText = memory.body_text || memory.text || "";
+        const isEditing = editingId === memory.id;
+
+        return (
+          <div key={memory.id} className="relative w-full">
+            <div className="absolute inset-x-2 top-2 bottom-1 rounded-sm border border-memory-maroon/20 bg-memory-maroon/5" />
+
+            <div className="relative z-10 bg-white p-6 md:p-8 rounded-2xl border border-memory-maroon/20 shadow-xs space-y-4">
+              {/* Meta Header */}
+              <div className="flex items-center justify-between border-b border-memory-maroon/10 pb-3">
+                <span className="text-[10px] uppercase tracking-widest text-memory-muted font-mono">
+                  {dateFormatted}
+                </span>
+
+                <div className="flex items-center gap-3">
+                  {isAudioMemory && (
+                    <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                      🎙️ Voice Recording
+                    </span>
+                  )}
+                  {isPhotoMemory && !isAudioMemory && (
+                    <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                      📷 Photo Memory
+                    </span>
+                  )}
+                  {!isAudioMemory && !isPhotoMemory && (
+                    <span className="text-[10px] bg-memory-maroon/10 text-memory-maroon px-2 py-0.5 rounded-full font-medium">
+                      ✍️ Written Story
+                    </span>
+                  )}
+
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => startEdit(memory)}
+                      className="text-[10px] text-memory-muted hover:text-memory-primary transition-colors cursor-pointer font-medium uppercase tracking-wide"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(memory.id)}
+                    className="text-[10px] text-memory-muted hover:text-red-600 transition-colors cursor-pointer font-medium uppercase tracking-wide"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {/* Title & Body Text (or Edit Form) */}
+              {isEditing ? (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={editData.title}
+                    onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                    placeholder="Memory title"
+                    className="w-full bg-memory-light border border-memory-border rounded-lg px-3 py-2 text-sm text-memory-primary font-serif font-bold outline-none focus:border-memory-accent"
+                  />
+                  <input
+                    type="date"
+                    value={editData.occurred_start}
+                    onChange={(e) => setEditData({ ...editData, occurred_start: e.target.value })}
+                    className="w-full bg-memory-light border border-memory-border rounded-lg px-3 py-2 text-xs text-memory-muted outline-none focus:border-memory-accent"
+                  />
+                  <textarea
+                    rows={5}
+                    value={editData.body_text}
+                    onChange={(e) => setEditData({ ...editData, body_text: e.target.value })}
+                    placeholder="Write your memory..."
+                    className="w-full bg-memory-light border border-memory-border rounded-lg px-3 py-2 text-sm text-memory-primary font-serif leading-relaxed outline-none focus:border-memory-accent resize-none"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      disabled={savingEdit}
+                      className="border border-memory-border text-xs px-3 py-1.5 rounded cursor-pointer text-memory-muted hover:text-memory-primary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit}
+                      className="bg-memory-primary text-white text-xs px-3 py-1.5 rounded hover:bg-memory-maroon cursor-pointer disabled:opacity-60"
+                    >
+                      {savingEdit ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {memory.title && (
+                    <h3 className="font-serif font-bold text-lg text-memory-primary mb-2">
+                      {memory.title}
+                    </h3>
+                  )}
+                  {resolvedText && (
+                    <p className="font-serif text-sm text-memory-primary/90 leading-relaxed whitespace-pre-line">
+                      {resolvedText}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* PHOTO MEMORY VISUAL */}
+              {photoAsset && photoUrl && (
+                <div className="mt-4 pt-4 border-t border-memory-maroon/10 text-center">
+                  <div className="rounded-xl overflow-hidden relative w-full h-72 max-w-md mx-auto border border-memory-maroon/15 bg-memory-bg">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoUrl}
+                      alt={photoAsset.caption || memory.title || "Memory photo"}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  </div>
+                  {photoAsset.caption && (
+                    <p className="text-xs italic text-memory-muted mt-2">{photoAsset.caption}</p>
+                  )}
+                </div>
+              )}
+
+              {/* AUDIO MEMORY VISUAL & TRANSCRIPT */}
+              {audioAsset && audioUrl && (
+                <div className="mt-4 pt-4 border-t border-memory-maroon/10 bg-memory-light p-4 rounded-xl space-y-3">
+                  <div className="flex items-center gap-4">
+                    <audio
+                      id={`audio-player-${memory.id}`}
+                      src={audioUrl}
+                      onEnded={() => setPlayingAudioId(null)}
+                      preload="metadata"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const audioEl = document.getElementById(
+                          `audio-player-${memory.id}`,
+                        ) as HTMLAudioElement;
+                        if (!audioEl) return;
+
+                        if (playingAudioId === memory.id) {
+                          audioEl.pause();
+                          setPlayingAudioId(null);
+                        } else {
+                          document.querySelectorAll("audio").forEach((el) => el.pause());
+                          audioEl.play();
+                          setPlayingAudioId(memory.id);
+                        }
+                      }}
+                      className="w-10 h-10 rounded-full bg-memory-primary text-memory-light flex items-center justify-center hover:bg-memory-maroon transition shadow-sm cursor-pointer shrink-0"
+                      aria-label="Play audio note"
+                    >
+                      <span className="text-xs font-bold">{playingAudioId === memory.id ? "❚❚" : "▶"}</span>
+                    </button>
+
+                    <div className="flex-1 w-full space-y-1">
+                      <div className="flex justify-between text-[11px] text-memory-muted font-mono">
+                        <span>
+                          {playingAudioId === memory.id
+                            ? "Playing voice recording..."
+                            : "Voice Note Recording"}
+                        </span>
+                        <span>AssemblyAI Audio</span>
+                      </div>
+                      <audio controls src={audioUrl} className="w-full h-8 mt-1 opacity-90" />
+                    </div>
+                  </div>
+
+                  {/* AI TRANSCRIPTION DISPLAY BOX */}
+                  <div className="bg-white/80 border border-memory-maroon/10 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-memory-accent">
+                        ✨ AI Transcript (AssemblyAI)
+                      </span>
+                      {audioAsset.transcript?.confidence && (
+                        <span className="text-[10px] text-memory-muted font-mono">
+                          Confidence: {Math.round(audioAsset.transcript.confidence * 100)}%
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="font-serif text-xs text-memory-primary/90 italic leading-relaxed">
+                      {audioAsset.transcript?.display_text || "Transcript not available yet."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -4055,483 +4484,6 @@ if (!parsed.success) {
 export const env = parsed.data;
 </file>
 
-<file path="src/features/dashboard/OwnerDashboard.tsx">
-"use client";
-
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-import { DashboardSidebar } from "./components/DashboardSidebar";
-import { DashboardHeader } from "./components/DashboardHeader";
-import { MetricsGrid } from "./components/MetricsGrid";
-import { MemoryFeed } from "./components/MemoryFeed";
-import MemoryFeedList from "./MemoryFeedList";
-import { BookCoverExperience } from "./BookCoverExperience";
-import { ChapterOrganizer } from "./components/ChapterOrganizer";
-
-interface MemoirData {
-  id?: string;
-  subject_name?: string;
-  subject_born_on?: string;
-  subject_died_on?: string;
-  subject_is_living?: boolean;
-}
-
-interface MemoirLocalStorageData {
-  data?: MemoirData;
-  id?: string;
-  subject_name?: string;
-  subject_born_on?: string;
-  subject_died_on?: string;
-  subject_is_living?: boolean;
-}
-
-export default function OwnerDashboardPage() {
-  const [activeTab, setActiveTab] = useState<string>("feed");
-  const [memoirId, setMemoirId] = useState<string>("");
-  const [subjectName, setSubjectName] = useState<string>("Ahmad Khan");
-  const [dob, setDob] = useState<string>("1942");
-  const [dod, setDod] = useState<string>("2024");
-
-  const router = useRouter();
-
-  // Changes whenever a new memory is successfully created.
-  // This forces MemoryFeedList to remount and fetch the latest data.
-  const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
-
-  useEffect(() => {
-    try {
-      const savedMemoir = localStorage.getItem("active_memoir");
-
-      if (savedMemoir) {
-        const parsed = JSON.parse(
-          savedMemoir
-        ) as MemoirLocalStorageData;
-
-        const memoirObj = parsed.data || parsed;
-
-        if (memoirObj.id) {
-          setMemoirId(memoirObj.id);
-        }
-
-        if (memoirObj.subject_name) {
-          setSubjectName(memoirObj.subject_name);
-        }
-
-        if (memoirObj.subject_born_on) {
-          setDob(memoirObj.subject_born_on.substring(0, 4));
-        }
-
-        if (memoirObj.subject_died_on) {
-          setDod(memoirObj.subject_died_on.substring(0, 4));
-        } else if (memoirObj.subject_is_living) {
-          setDod("Present");
-        }
-      }
-    } catch (err: unknown) {
-      console.error(
-        "Failed to read active memoir from localStorage",
-        err
-      );
-    }
-  }, []);
-
-  const metricsData = [
-    {
-      label: "Total Entries",
-      value: "Live",
-    },
-    {
-      label: "Media Vault",
-      value: "Active",
-    },
-    {
-      label: "Collaborators",
-      value: 1,
-    },
-  ];
-
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("active_memoir");
-
-    router.push("/");
-  };
-
-  return (
-    <BookCoverExperience
-      title="Personal Life Memoir"
-      subtitle="A preserved record of personal stories, reflections, and voice notes."
-    >
-      <div className="flex min-h-screen overflow-hidden rounded-2xl border border-memory-border bg-memory-bg text-memory-primary shadow-lg">
-        <DashboardSidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          memoirId={memoirId}
-        />
-
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <DashboardHeader
-            subjectName={subjectName}
-            dob={dob}
-            dod={dod}
-            onLogout={handleLogout}
-          />
-
-          <div className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
-            <div className="mb-7">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-memory-accent">
-                Living Archive
-              </p>
-
-              <h1 className="font-serif text-2xl font-bold tracking-tight text-memory-maroon sm:text-3xl">
-                Preserve the moments that matter.
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-memory-muted">
-                Capture stories, voices, photographs, and memories to build a
-                lasting personal archive.
-              </p>
-            </div>
-
-            <div className="mb-9">
-              <MetricsGrid metrics={metricsData} />
-            </div>
-
-            {/* =========================
-                FEED TAB
-               ========================= */}
-            {activeTab === "feed" && (
-              <div className="space-y-10">
-                <MemoryFeed
-                  memories={[]}
-                  memoirId={memoirId}
-                  onSuccess={() => {
-                    // Incrementing this value changes the key on
-                    // MemoryFeedList, causing it to remount and
-                    // retrieve the newly-created memory.
-                    setFeedRefreshKey((prev) => prev + 1);
-                  }}
-                />
-
-                {/* The comment must be outside the ternary expression. */}
-                {memoirId ? (
-                  <MemoryFeedList
-                    key={feedRefreshKey}
-                    memoirId={memoirId}
-                  />
-                ) : (
-                  <div className="rounded-2xl border border-memory-maroon/20 bg-white p-6 py-12 text-center text-sm text-memory-muted">
-                    No active memoir container found. Please complete
-                    onboarding.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* =========================
-                CHAPTERS TAB
-               ========================= */}
-            {activeTab === "chapters" && (
-              <ChapterOrganizer memoirId={memoirId} />
-            )}
-
-            {/* =========================
-                MEDIA TAB
-               ========================= */}
-            {activeTab === "media" && (
-              <div className="rounded-2xl border border-memory-border bg-white p-8">
-                <h2 className="font-serif text-xl font-semibold text-memory-maroon">
-                  Media Vault
-                </h2>
-
-                <p className="mt-2 text-sm text-memory-muted">
-                  Your media collection will appear here.
-                </p>
-              </div>
-            )}
-
-            {/* =========================
-                TEAM TAB
-               ========================= */}
-            {activeTab === "team" && (
-              <div className="rounded-2xl border border-memory-border bg-white p-8">
-                <h2 className="font-serif text-xl font-semibold text-memory-maroon">
-                  Collaborators
-                </h2>
-
-                <p className="mt-2 text-sm text-memory-muted">
-                  Your collaborators and team members will appear here.
-                </p>
-              </div>
-            )}
-          </div>
-        </main>
-      </div>
-    </BookCoverExperience>
-  );
-}
-</file>
-
-<file path="src/features/FinalMemoir/MemoryCard.tsx">
-import React, { useState } from "react";
-import { MemoryItem } from "./types";
-
-interface ReplyItem {
-  id: string;
-  author: string;
-  text: string;
-  time: string;
-}
-
-interface CommentItem {
-  id: string;
-  author: string;
-  text: string;
-  time: string;
-  replies?: ReplyItem[];
-}
-
-interface MemoryCardProps {
-  mem: MemoryItem;
-  isHighlighted: boolean;
-  currentReaction: { count: number; reacted: boolean };
-  handleToggleReaction: (id: string) => void;
-  isCommentsOpen: boolean;
-  setOpenCommentsId: (id: string | null) => void;
-  commentsList: CommentItem[];
-  commentInputValue: string;
-  setCommentInputValue: (val: string) => void;
-  handlePostComment: (id: string) => void;
-  handlePostReply?: (commentId: string, replyText: string) => void;
-}
-
-export default function MemoryCard({
-  mem, isHighlighted, currentReaction, handleToggleReaction,
-  isCommentsOpen, setOpenCommentsId, commentsList,
-  commentInputValue, setCommentInputValue, handlePostComment,
-  handlePostReply
-}: MemoryCardProps) {
-  const [activeReplyCommentId, setActiveReplyCommentId] = useState<string | null>(null);
-  const [replyTextMap, setReplyTextMap] = useState<{ [commentId: string]: string }>({});
-
-  const onReplySubmit = (commentId: string) => {
-    const text = replyTextMap[commentId];
-    if (!text || !text.trim()) return;
-    if (handlePostReply) {
-      handlePostReply(commentId, text.trim());
-    }
-    setReplyTextMap({ ...replyTextMap, [commentId]: "" });
-    setActiveReplyCommentId(null);
-  };
-
-  return (
-    <article className="relative group flex flex-col pt-1 pb-4 mb-2">
-      <div className="relative book-text font-serif leading-[1.7] text-[15px] text-stone-800 w-full">
-        
-        {mem.text && mem.text.trim() !== "" ? (
-          /* Standard Typeset Paragraphs for text memories */
-          mem.text.split('\n\n').map((para, pIdx) => {
-            if (pIdx === 0) {
-              let firstSentence = "";
-              let restOfPara = para;
-
-              if (isHighlighted) {
-                const firstDot = para.indexOf('.');
-                firstSentence = para.substring(0, firstDot + 1);
-                restOfPara = para.substring(firstDot + 1);
-              }
-
-              return (
-                <p key={pIdx} className="mb-2.5">
-                  {mem.title && (
-                    <span className="font-bold text-stone-900 uppercase tracking-widest text-[11px] mr-3">
-                      {mem.title}
-                    </span>
-                  )}
-                  {isHighlighted ? (
-                    <>
-                      <span className="font-bold text-memory-maroon">{firstSentence}</span>
-                      {restOfPara}
-                    </>
-                  ) : (
-                    para
-                  )}
-                </p>
-              );
-            } else {
-              return (
-                <p key={pIdx} className="indent-6 mb-2.5">
-                  {para}
-                  {pIdx === mem.text.split('\n\n').length - 1 && (
-                    <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-400 font-semibold ml-3 whitespace-nowrap">
-                      — Remembered by {mem.author} &middot; {mem.date}
-                    </span>
-                  )}
-                </p>
-              );
-            }
-          })
-        ) : (
-          /* Graceful fallback inline context for photo-only or audio-only memories */
-          mem.title && (
-             <p className="mb-2.5 text-stone-600 italic">
-               <span className="font-bold text-stone-900 uppercase tracking-widest text-[11px] mr-3 not-italic">
-                 {mem.title}
-               </span>
-               A memory shared by {mem.author} &middot; {mem.date}
-             </p>
-          )
-        )}
-      </div>
-
-      {/* MEMORY PHOTOS (single photo, or a horizontally scrollable strip for several) */}
-      {mem.images && mem.images.length > 0 && (
-        <div
-          className="flex overflow-x-auto gap-3 snap-x snap-mandatory py-1 my-4"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-        >
-          <style dangerouslySetInnerHTML={{ __html: `.book-text ~ div::-webkit-scrollbar { display: none; }` }} />
-          {mem.images.map((img) => (
-            <figure
-              key={img.id}
-              className="snap-center shrink-0 w-56 md:w-64 bg-white p-1.5 border border-stone-200 shadow-sm"
-            >
-              <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={img.url}
-                  alt={img.caption || mem.title || "Memory photo"}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {img.caption && (
-                <figcaption className="pt-1.5 pb-0.5 text-[10px] font-serif italic text-stone-500 text-center truncate px-1">
-                  {img.caption}
-                </figcaption>
-              )}
-            </figure>
-          ))}
-        </div>
-      )}
-
-      {/* ACTION BUTTONS */}
-      <div className="flex justify-start items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1 mb-4">
-        <button 
-          type="button"
-          onClick={() => handleToggleReaction(mem.id)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-sans font-medium transition-colors cursor-pointer border ${
-            currentReaction.reacted 
-            ? "bg-memory-maroon/10 border-memory-maroon/20 text-memory-maroon" 
-            : "bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100"
-          }`}
-        >
-          <span className="text-sm">{currentReaction.reacted ? '♥' : '♡'}</span> {currentReaction.count}
-        </button>
-
-        <button 
-          type="button"
-          onClick={() => setOpenCommentsId(isCommentsOpen ? null : mem.id)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-sans font-medium transition-colors cursor-pointer border bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100"
-        >
-          <span className="text-stone-500">✎</span> {commentsList.length} Notes
-        </button>
-      </div>
-
-      {/* MARGINALIA SECTION (Comments & Replies) */}
-      {isCommentsOpen && (
-        <div className="mb-4 pt-3 border-t border-stone-200/50 space-y-3 text-xs font-sans animate-fadeIn px-4">
-          <h5 className="font-serif uppercase tracking-widest text-memory-maroon font-semibold text-[9px] text-center">
-            Marginalia
-          </h5>
-          <div className="space-y-3">
-            {commentsList.length === 0 ? (
-              <p className="text-[11px] text-stone-400 italic font-serif text-center">
-                No margin notes yet.
-              </p>
-            ) : (
-              commentsList.map((c) => (
-                <div key={c.id} className="bg-stone-50/50 p-2.5 border-l-2 border-memory-maroon/30 space-y-2">
-                  <div className="flex justify-between font-semibold text-stone-800 text-[10px]">
-                    <span>{c.author}</span>
-                    <span className="text-[9px] text-stone-400 font-normal">{c.time}</span>
-                  </div>
-                  <p className="text-stone-600 text-[11px] font-serif italic">{c.text}</p>
-                  
-                  {/* Nested Replies Stream */}
-                  {c.replies && c.replies.length > 0 && (
-                    <div className="pl-3 mt-2 border-l border-stone-200 space-y-2">
-                      {c.replies.map((r) => (
-                        <div key={r.id} className="text-[10px] space-y-0.5">
-                          <div className="flex justify-between font-semibold text-stone-700">
-                            <span>{r.author}</span>
-                            <span className="text-[8px] text-stone-400 font-normal">{r.time}</span>
-                          </div>
-                          <p className="text-stone-600 font-serif italic">{r.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Reply Action Trigger */}
-                  <div className="pt-1 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setActiveReplyCommentId(activeReplyCommentId === c.id ? null : c.id)}
-                      className="text-[10px] text-stone-500 hover:text-memory-maroon font-serif italic cursor-pointer"
-                    >
-                      {activeReplyCommentId === c.id ? "Cancel" : "Reply"}
-                    </button>
-                  </div>
-
-                  {/* Inline Reply Input Box */}
-                  {activeReplyCommentId === c.id && (
-                    <div className="flex gap-2 pt-1 pl-2 items-center">
-                      <input 
-                        type="text"
-                        placeholder="Write a reply..."
-                        value={replyTextMap[c.id] || ""}
-                        onChange={(e) => setReplyTextMap({ ...replyTextMap, [c.id]: e.target.value })}
-                        className="w-full bg-transparent border-b border-stone-300 border-dashed px-2 py-1 text-[11px] font-serif italic outline-none focus:border-memory-maroon"
-                      />
-                      <button 
-                        type="button"
-                        onClick={() => onReplySubmit(c.id)}
-                        className="px-2 py-1 text-memory-maroon font-serif text-[11px] hover:underline cursor-pointer whitespace-nowrap"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Main Comment Input Box */}
-          <div className="flex gap-2 pt-2 justify-center">
-            <input 
-              type="text"
-              placeholder="Scribble a note..."
-              value={commentInputValue}
-              onChange={(e) => setCommentInputValue(e.target.value)}
-              className="w-2/3 bg-transparent border-b border-stone-300 border-dashed px-2 py-1 text-[11px] font-serif italic outline-none focus:border-memory-maroon"
-            />
-            <button 
-              type="button"
-              onClick={() => handlePostComment(mem.id)}
-              className="px-2 py-1 text-memory-maroon font-serif text-[11px] hover:underline cursor-pointer"
-            >
-              Add
-            </button>
-          </div>
-        </div>
-      )}
-    </article>
-  );
-}
-</file>
-
 <file path="src/features/landingPage/Hero.tsx">
 /**
  * @file Hero.tsx
@@ -4539,14 +4491,27 @@ export default function MemoryCard({
  * refactored to use shared theme color tokens instead of hardcoded hex brackets.
  */
 
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { MouseEvent } from "react";
 
 export default function Hero() {
+  const router = useRouter();
+
+  const handleGatherMemories = (e: MouseEvent) => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      e.preventDefault();
+      router.push("/dashboard");
+    }
+  };
+
   return (
     <section className="grid grid-cols-1 lg:grid-cols-12 items-center gap-12 max-w-7xl mx-auto px-8 py-20 md:py-32 bg-memory-bg">
-
       <div className="lg:col-span-6 flex flex-col justify-center">
-
         <h1 className="text-memory-primary text-5xl md:text-[56px] font-serif font-bold leading-tight max-w-140">
           A shared family
           <br />
@@ -4558,37 +4523,45 @@ export default function Hero() {
         </h1>
 
         <p className="mt-6 md:mt-8 text-xl md:text-[22px] font-sans font-light leading-relaxed text-memory-primary/80 max-w-135">
-          Share one link to collect voice stories, memories and photos
-          from family. Everything is automatically organized into a 
-          chaptered archive and printable PDF.
+          Share one link to collect voice stories, memories and photos from family. Everything is
+          automatically organized into a chaptered archive and printable PDF.
         </p>
 
         <div className="flex mt-8">
           <Link
             href="/memory-subject-selection"
+            onClick={handleGatherMemories}
             className="bg-memory-maroon text-memory-bg text-base md:text-lg font-sans font-medium px-8 py-3.5 rounded-xl hover:bg-memory-primary hover:shadow-xl hover:shadow-memory-maroon/20 hover:-translate-y-0.5 transition-all duration-300 inline-flex items-center justify-center border border-memory-maroon"
           >
             Gather your memories
           </Link>
         </div>
-
       </div>
 
       <div className="lg:col-span-6 mt-12 lg:mt-0 relative">
-
         <div className="min-h-110 bg-memory-card border-2 border-dashed border-memory-accent/50 rounded-2xl flex flex-col items-center justify-center p-10 text-center shadow-lg group hover:border-memory-accent transition-colors duration-300">
-          
           <div className="w-12 h-12 rounded-full bg-memory-accent/10 flex items-center justify-center mb-6">
-            <svg className="w-6 h-6 text-memory-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <svg
+              className="w-6 h-6 text-memory-accent"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              ></path>
+            </svg>
           </div>
-          
+
           <p className="text-xl font-serif italic text-memory-primary/60 leading-relaxed max-w-[80%] group-hover:text-memory-primary/80 transition-colors">
-            Proper preview of how the living memoir will look like at the end so the user knows what value they are getting right away.
+            Proper preview of how the living memoir will look like at the end so the user knows what
+            value they are getting right away.
           </p>
         </div>
-
       </div>
-
     </section>
   );
 }
@@ -4991,108 +4964,436 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
 }
 </file>
 
-<file path="src/features/auth/hooks.ts">
-// src/features/auth/hooks.ts
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { api } from "@/lib/api/client";
-import { LoginInput, SignupInput } from "./schemas";
+<file path="src/features/dashboard/OwnerDashboard.tsx">
+"use client";
 
-export function useAuth() {
-  const [loading, setLoading] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+
+import { DashboardSidebar } from "./components/DashboardSidebar";
+import { DashboardHeader } from "./components/DashboardHeader";
+import { MetricsGrid } from "./components/MetricsGrid";
+import { MemoryFeed } from "./components/MemoryFeed";
+import MemoryFeedList from "./MemoryFeedList";
+import { BookCoverExperience } from "./BookCoverExperience";
+import { ChapterOrganizer } from "./components/ChapterOrganizer";
+import { api } from "@/lib/api/client";
+
+interface MemoirData {
+  id?: string;
+  subject_name?: string;
+  subject_born_on?: string;
+  subject_died_on?: string;
+  subject_is_living?: boolean;
+}
+
+interface MemoirLocalStorageData {
+  data?: MemoirData;
+  id?: string;
+  subject_name?: string;
+  subject_born_on?: string;
+  subject_died_on?: string;
+  subject_is_living?: boolean;
+}
+
+export default function OwnerDashboardPage() {
+  const [activeTab, setActiveTab] = useState<string>("feed");
+  const [memoirId, setMemoirId] = useState<string>("");
+  const [subjectName, setSubjectName] = useState<string>("");
+  const [dob, setDob] = useState<string>("");
+  const [dod, setDod] = useState<string>("");
+  const [loadingMemoir, setLoadingMemoir] = useState<boolean>(true);
+
   const router = useRouter();
 
-  const processPendingMemoir = async () => {
-    const pendingMemoirData = localStorage.getItem("pending_memoir");
-    if (pendingMemoirData) {
+  // Guard: if no token, redirect to login
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [router]);
+
+  const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
+  const [memoryCount, setMemoryCount] = useState<number>(0);
+
+  const applyMemoirData = useCallback((memoirObj: MemoirData) => {
+    if (memoirObj.id) setMemoirId(memoirObj.id);
+    if (memoirObj.subject_name) setSubjectName(memoirObj.subject_name);
+    if (memoirObj.subject_born_on) setDob(memoirObj.subject_born_on.substring(0, 4));
+
+    if (memoirObj.subject_died_on) {
+      setDod(memoirObj.subject_died_on.substring(0, 4));
+    } else if (memoirObj.subject_is_living) {
+      setDod("Present");
+    } else {
+      setDod("");
+    }
+  }, []);
+
+  // Hydrate memoir from localStorage or fetch from backend API
+
+  useEffect(() => {
+    async function initMemoir() {
+      setLoadingMemoir(true);
       try {
-        const memoirPayload = JSON.parse(pendingMemoirData);
-        const createdMemoir = await api.createMemoir(memoirPayload);
-        localStorage.setItem("active_memoir", JSON.stringify(createdMemoir));
-        localStorage.removeItem("pending_memoir");
-      } catch (err) {
-        console.error("Failed to auto-create memoir during onboarding:", err);
+        const savedMemoir = localStorage.getItem("active_memoir");
+
+        if (savedMemoir) {
+          const parsed = JSON.parse(savedMemoir) as MemoirLocalStorageData;
+          const memoirObj = parsed.data || parsed;
+
+          if (memoirObj && memoirObj.id) {
+            applyMemoirData(memoirObj);
+            setLoadingMemoir(false);
+            return;
+          }
+        }
+
+        // Fallback to backend API if localStorage is missing or stale
+        const token = localStorage.getItem("access_token");
+        if (token) {
+          const activeMemoir = await api.getUserActiveMemoir().catch(() => null);
+          if (activeMemoir && activeMemoir.id) {
+            localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
+            applyMemoirData(activeMemoir);
+          }
+        }
+      } catch (err: unknown) {
+        console.warn("Could not load active memoir:", err);
+      } finally {
+        setLoadingMemoir(false);
       }
     }
+
+    initMemoir();
+  }, [applyMemoirData]);
+
+  const metricsData = [
+    { label: "Total Entries", value: memoryCount },
+    { label: "Media Vault", value: "Active" },
+    { label: "Collaborators", value: 1 },
+  ];
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("active_memoir");
+    router.push("/");
   };
 
-  const startAuthAction = () => {
-    setLoading(true);
-    setServerError(null);
-    setSuccessMessage(null);
-  };
+  return (
+    <BookCoverExperience
+      title={subjectName ? `${subjectName}'s Memoir` : "Personal Life Memoir"}
+      subtitle="A preserved record of personal stories, reflections, and voice notes."
+    >
+      <div className="flex min-h-screen overflow-hidden rounded-2xl border border-memory-border bg-memory-bg text-memory-primary shadow-lg">
+        <DashboardSidebar activeTab={activeTab} setActiveTab={setActiveTab} memoirId={memoirId} />
 
-  const handleLogin = async (data: LoginInput): Promise<boolean> => {
-    startAuthAction();
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <DashboardHeader
+            subjectName={subjectName || "Loading Memoir..."}
+            dob={dob}
+            dod={dod}
+            onLogout={handleLogout}
+          />
 
-    try {
-      const res = await api.login({
-        email: data.email,
-        password: data.password,
-      });
+          <div className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
+            <div className="mb-7">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-memory-accent">
+                Living Archive
+              </p>
 
-      const accessToken = res.access_token || res.token || res.data?.access_token;
-      if (accessToken) {
-        localStorage.setItem("access_token", accessToken);
-        await processPendingMemoir(); // FIX: Added pending memoir creation for logging in
-      }
+              <h1 className="font-serif text-2xl font-bold tracking-tight text-memory-maroon sm:text-3xl">
+                {subjectName ? `Memoir for ${subjectName}` : "Preserve the moments that matter."}
+              </h1>
 
-      router.push("/dashboard");
-      return true;
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : "An error occurred during login";
-      setServerError(errorMessage);
-      return false;
-    } finally {
-      setLoading(false);
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-memory-muted">
+                Capture stories, voices, photographs, and memories to build a lasting personal archive.
+              </p>
+            </div>
+
+            <div className="mb-9">
+              <MetricsGrid metrics={metricsData} />
+            </div>
+
+            {activeTab === "feed" && (
+              <div className="space-y-10">
+                <MemoryFeed
+                  memories={[]}
+                  memoirId={memoirId}
+                  onSuccess={() => setFeedRefreshKey((prev) => prev + 1)}
+                />
+
+                {loadingMemoir ? (
+                  <div className="rounded-2xl border border-memory-maroon/20 bg-white p-6 py-12 text-center text-sm text-memory-muted">
+                    Loading your memoir container...
+                  </div>
+                ) : memoirId ? (
+                  <MemoryFeedList
+                    key={feedRefreshKey}
+                    memoirId={memoirId}
+                    onCountChange={setMemoryCount}
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-memory-maroon/20 bg-white p-6 py-12 text-center text-sm text-memory-muted">
+                    No active memoir container found. Please complete onboarding or create a new memoir.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className={activeTab === "chapters" ? "" : "hidden"}>
+              <ChapterOrganizer memoirId={memoirId} />
+            </div>
+
+            {activeTab === "media" && (
+              <div className="rounded-2xl border border-memory-border bg-white p-8">
+                <h2 className="font-serif text-xl font-semibold text-memory-maroon">Media Vault</h2>
+                <p className="mt-2 text-sm text-memory-muted">Your media collection will appear here.</p>
+              </div>
+            )}
+
+            {activeTab === "team" && (
+              <div className="rounded-2xl border border-memory-border bg-white p-8">
+                <h2 className="font-serif text-xl font-semibold text-memory-maroon">Collaborators</h2>
+                <p className="mt-2 text-sm text-memory-muted">
+                  Your collaborators and team members will appear here.
+                </p>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </BookCoverExperience>
+  );
+}
+</file>
+
+<file path="src/features/FinalMemoir/MemoryCard.tsx">
+import React, { useState } from "react";
+import { MemoryItem } from "./types";
+
+interface ReplyItem {
+  id: string;
+  author: string;
+  text: string;
+  time: string;
+}
+
+interface CommentItem {
+  id: string;
+  author: string;
+  text: string;
+  time: string;
+  replies?: ReplyItem[];
+}
+
+interface MemoryCardProps {
+  mem: MemoryItem;
+  isHighlighted: boolean;
+  currentReaction: { count: number; reacted: boolean };
+  handleToggleReaction: (id: string) => void;
+  isCommentsOpen: boolean;
+  setOpenCommentsId: (id: string | null) => void;
+  commentsList: CommentItem[];
+  commentInputValue: string;
+  setCommentInputValue: (val: string) => void;
+  handlePostComment: (id: string) => void;
+  handlePostReply?: (commentId: string, replyText: string) => void;
+}
+
+export default function MemoryCard({
+  mem, isHighlighted, currentReaction, handleToggleReaction,
+  isCommentsOpen, setOpenCommentsId, commentsList,
+  commentInputValue, setCommentInputValue, handlePostComment,
+  handlePostReply
+}: MemoryCardProps) {
+  const [activeReplyCommentId, setActiveReplyCommentId] = useState<string | null>(null);
+  const [replyTextMap, setReplyTextMap] = useState<{ [commentId: string]: string }>({});
+
+  const onReplySubmit = (commentId: string) => {
+    const text = replyTextMap[commentId];
+    if (!text || !text.trim()) return;
+    if (handlePostReply) {
+      handlePostReply(commentId, text.trim());
     }
+    setReplyTextMap({ ...replyTextMap, [commentId]: "" });
+    setActiveReplyCommentId(null);
   };
 
-  const handleSignup = async (
-    data: SignupInput & { confirmPassword?: string }
-  ): Promise<boolean> => {
-    startAuthAction();
+  return (
+    <article className="relative group flex flex-col pt-1 pb-4 mb-2">
+      <div className="relative book-text font-serif leading-[1.7] text-[15px] text-stone-800 w-full">
+        
+        {mem.text && mem.text.trim() !== "" ? (
+          mem.text.split('\n\n').map((para, pIdx) => {
+            const paragraphs = mem.text.split('\n\n');
+            if (pIdx === 0) {
+              let firstSentence = "";
+              let restOfPara = para;
 
-    try {
-      const res = await api.signup({
-        full_name: data.full_name,
-        email: data.email,
-        password: data.password,
-      });
+              if (isHighlighted) {
+                const firstDot = para.indexOf('.');
+                firstSentence = para.substring(0, firstDot + 1);
+                restOfPara = para.substring(firstDot + 1);
+              }
 
-      const accessToken = res.access_token || res.token || res.data?.access_token;
-      if (accessToken) {
-        localStorage.setItem("access_token", accessToken);
-        await processPendingMemoir();
-      }
+              return (
+                <p key={pIdx} className="mb-2.5">
+                  {mem.title && (
+                    <span className="font-bold text-stone-900 uppercase tracking-widest text-[11px] mr-3">
+                      {mem.title}
+                    </span>
+                  )}
+                  {isHighlighted ? (
+                    <>
+                      <span className="font-bold text-memory-maroon">{firstSentence}</span>
+                      {restOfPara}
+                    </>
+                  ) : (
+                    para
+                  )}
+                </p>
+              );
+            } else {
+              return (
+                <p key={pIdx} className="indent-6 mb-2.5">
+                  {para}
+                  {pIdx === paragraphs.length - 1 && (
+                    <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-400 font-semibold ml-3 whitespace-nowrap">
+                      — Remembered by {mem.author} &middot; {mem.date}
+                    </span>
+                  )}
+                </p>
+              );
+            }
+          })
+        ) : (
+          mem.title && (
+             <p className="mb-2.5 text-stone-600 italic">
+               <span className="font-bold text-stone-900 uppercase tracking-widest text-[11px] mr-3 not-italic">
+                 {mem.title}
+               </span>
+               A memory shared by {mem.author} &middot; {mem.date}
+             </p>
+          )
+        )}
+      </div>
 
-      setSuccessMessage(
-        "Account created successfully! Please proceed to log in."
-      );
-      setTimeout(() => router.push("/login"), 2000);
-      return true;
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : "An unknown error occurred during signup";
-      setServerError(errorMessage);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
+      {/* 🔴 REMOVED: per-memory image gallery block.
+          Images for the whole chapter are now rendered ONCE, 
+          in the horizontal gallery at the top of the chapter (page.tsx). */}
 
-  return {
-    loading,
-    serverError,
-    successMessage,
-    setServerError,
-    setSuccessMessage,
-    handleLogin,
-    handleSignup,
-  };
+      {/* ACTION BUTTONS */}
+      <div className="flex justify-start items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1 mb-4">
+        <button 
+          type="button"
+          onClick={() => handleToggleReaction(mem.id)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-sans font-medium transition-colors cursor-pointer border ${
+            currentReaction.reacted 
+            ? "bg-memory-maroon/10 border-memory-maroon/20 text-memory-maroon" 
+            : "bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100"
+          }`}
+        >
+          <span className="text-sm">{currentReaction.reacted ? '♥' : '♡'}</span> {currentReaction.count}
+        </button>
+
+        <button 
+          type="button"
+          onClick={() => setOpenCommentsId(isCommentsOpen ? null : mem.id)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-sans font-medium transition-colors cursor-pointer border bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100"
+        >
+          <span className="text-stone-500">✎</span> {commentsList.length} Notes
+        </button>
+      </div>
+
+      {isCommentsOpen && (
+        <div className="mb-4 pt-3 border-t border-stone-200/50 space-y-3 text-xs font-sans animate-fadeIn px-4">
+          <h5 className="font-serif uppercase tracking-widest text-memory-maroon font-semibold text-[9px] text-center">
+            Marginalia
+          </h5>
+          <div className="space-y-3">
+            {commentsList.length === 0 ? (
+              <p className="text-[11px] text-stone-400 italic font-serif text-center">
+                No margin notes yet.
+              </p>
+            ) : (
+              commentsList.map((c) => (
+                <div key={c.id} className="bg-stone-50/50 p-2.5 border-l-2 border-memory-maroon/30 space-y-2">
+                  <div className="flex justify-between font-semibold text-stone-800 text-[10px]">
+                    <span>{c.author}</span>
+                    <span className="text-[9px] text-stone-400 font-normal">{c.time}</span>
+                  </div>
+                  <p className="text-stone-600 text-[11px] font-serif italic">{c.text}</p>
+                  
+                  {c.replies && c.replies.length > 0 && (
+                    <div className="pl-3 mt-2 border-l border-stone-200 space-y-2">
+                      {c.replies.map((r) => (
+                        <div key={r.id} className="text-[10px] space-y-0.5">
+                          <div className="flex justify-between font-semibold text-stone-700">
+                            <span>{r.author}</span>
+                            <span className="text-[8px] text-stone-400 font-normal">{r.time}</span>
+                          </div>
+                          <p className="text-stone-600 font-serif italic">{r.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setActiveReplyCommentId(activeReplyCommentId === c.id ? null : c.id)}
+                      className="text-[10px] text-stone-500 hover:text-memory-maroon font-serif italic cursor-pointer"
+                    >
+                      {activeReplyCommentId === c.id ? "Cancel" : "Reply"}
+                    </button>
+                  </div>
+
+                  {activeReplyCommentId === c.id && (
+                    <div className="flex gap-2 pt-1 pl-2 items-center">
+                      <input 
+                        type="text"
+                        placeholder="Write a reply..."
+                        value={replyTextMap[c.id] || ""}
+                        onChange={(e) => setReplyTextMap({ ...replyTextMap, [c.id]: e.target.value })}
+                        className="w-full bg-transparent border-b border-stone-300 border-dashed px-2 py-1 text-[11px] font-serif italic outline-none focus:border-memory-maroon"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => onReplySubmit(c.id)}
+                        className="px-2 py-1 text-memory-maroon font-serif text-[11px] hover:underline cursor-pointer whitespace-nowrap"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-2 justify-center">
+            <input 
+              type="text"
+              placeholder="Scribble a note..."
+              value={commentInputValue}
+              onChange={(e) => setCommentInputValue(e.target.value)}
+              className="w-2/3 bg-transparent border-b border-stone-300 border-dashed px-2 py-1 text-[11px] font-serif italic outline-none focus:border-memory-maroon"
+            />
+            <button 
+              type="button"
+              onClick={() => handlePostComment(mem.id)}
+              className="px-2 py-1 text-memory-maroon font-serif text-[11px] hover:underline cursor-pointer"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
 }
 </file>
 
@@ -5305,6 +5606,211 @@ export default function InviteFamilyFriends() {
 }
 </file>
 
+<file path="src/app/globals.css">
+/* The stylesheet used containing tailwind and css rules applied accross application */
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Shared Theme Tokens for your custom color palette */
+  --memory-bg: #faf8f5;
+  --memory-primary: #381c24;
+  --memory-accent: #c9a063;
+  --memory-border: #f0e4d3;
+  --memory-muted: #78716c;
+  --memory-maroon: #4a222a;
+  --memory-card: #fdf8ed;
+  --memory-light: #fefaf1;
+  --memory-dark-end: #12070b;
+
+  /* Semantic form token */
+  --memory-required: #dc2626;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-inter), sans-serif;
+  --font-serif: var(--font-playfair), serif;
+  --font-caveat: var(--font-caveat), cursive;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Registering the shared color tokens for Tailwind utility classes */
+  --color-memory-bg: var(--memory-bg);
+  --color-memory-primary: var(--memory-primary);
+  --color-memory-accent: var(--memory-accent);
+  --color-memory-border: var(--memory-border);
+  --color-memory-muted: var(--memory-muted);
+  --color-memory-maroon: var(--memory-maroon);
+  --color-memory-card: var(--memory-card);
+  --color-memory-light: var(--memory-light);
+  --color-memory-dark-end: var(--memory-dark-end);
+
+  /* Semantic form token */
+  --color-memory-required: var(--memory-required);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+</file>
+
+<file path="src/app/page.tsx">
+'use client';
+
+import Hero from "../features/landingPage/Hero";
+import LandingPageScroll from "../features/landingPage/LandingPageScroll";
+
+export default function Home() {
+  
+  return (
+    <main>
+      <Hero />
+      <LandingPageScroll />
+    </main>
+  );
+}
+</file>
+
+<file path="src/features/auth/hooks.ts">
+// src/features/auth/hooks.ts
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api/client";
+import { LoginInput, SignupInput } from "./schemas";
+
+export function useAuth() {
+  const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const router = useRouter();
+
+  const processPendingMemoir = async () => {
+    const pendingMemoirData = localStorage.getItem("pending_memoir");
+    if (pendingMemoirData) {
+      try {
+        const memoirPayload = JSON.parse(pendingMemoirData);
+        const createdMemoir = await api.createMemoir(memoirPayload);
+        localStorage.setItem("active_memoir", JSON.stringify(createdMemoir));
+        localStorage.removeItem("pending_memoir");
+      } catch (err) {
+        console.error("Failed to auto-create memoir during onboarding:", err);
+      }
+    }
+  };
+
+  const startAuthAction = () => {
+    setLoading(true);
+    setServerError(null);
+    setSuccessMessage(null);
+  };
+
+  const extractAccessToken = (res: any): string | null => {
+    const token =
+      res?.access_token ||
+      res?.token ||
+      res?.data?.access_token ||
+      res?.data?.token ||
+      null;
+    return typeof token === "string" && token.trim() ? token : null;
+  };
+
+  const handleLogin = async (data: LoginInput): Promise<boolean> => {
+    startAuthAction();
+
+    try {
+      const res = await api.login({
+        email: data.email,
+        password: data.password,
+      });
+
+      const accessToken = extractAccessToken(res);
+
+      if (!accessToken) {
+        throw new Error("Login did not return an access token.");
+      }
+
+      localStorage.setItem("access_token", accessToken);
+      await processPendingMemoir();
+
+      router.push("/dashboard");
+      return true;
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "An error occurred during login";
+      setServerError(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async (
+    data: SignupInput & { confirmPassword?: string }
+  ): Promise<boolean> => {
+    startAuthAction();
+
+    try {
+      const res = await api.signup({
+        full_name: data.full_name,
+        email: data.email,
+        password: data.password,
+      });
+
+      const accessToken = extractAccessToken(res);
+
+      // If Supabase requires email confirmation, access token will be null.
+      // Do NOT send the user to /dashboard in that case.
+      if (!accessToken) {
+        setSuccessMessage(
+          "Account created! Please check your email to confirm your account, then log in."
+        );
+        setTimeout(() => router.push("/login"), 2000);
+        return true;
+      }
+
+       localStorage.setItem("access_token", accessToken);
+
+      // Restore active memoir from login response if present
+      const activeMemoir = res?.data?.active_memoir || res?.active_memoir;
+      if (activeMemoir) {
+        localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
+      }
+
+      await processPendingMemoir();
+
+      router.push("/dashboard");
+      return true;
+      
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "An unknown error occurred during signup";
+      setServerError(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    loading,
+    serverError,
+    successMessage,
+    setServerError,
+    setSuccessMessage,
+    handleLogin,
+    handleSignup,
+  };
+}
+</file>
+
 <file path="src/app/final-memoir/page.tsx">
 // src/app/final-memoir/page.tsx
 "use client";
@@ -5321,7 +5827,7 @@ import MemoirSidebar from "@/features/FinalMemoir/MemoirSidebar";
 import ScatteredGallery from "@/features/FinalMemoir/ScatteredGallery";
 
 import { mockHeroPhotos, mockMemories, mockShortQuotes } from "@/features/FinalMemoir/mockData";
-import { MemoryItem, HeroPhoto, MemoryImage } from "@/features/FinalMemoir/types";
+import { MemoryItem, HeroPhoto, MemoryImage, MemoryAudio } from "@/features/FinalMemoir/types";
 
 interface ReplyItem {
   id: string;
@@ -5344,6 +5850,12 @@ interface ApiMediaAsset {
   playback_url?: string;
   storage_key?: string;
   caption?: string;
+  transcript?: {
+    display_text?: string;
+    raw_text?: string;
+    confidence?: number;
+    language?: string;
+  } | null;
 }
 
 interface ApiMemoryRecord {
@@ -5364,11 +5876,25 @@ interface ApiChapterRecord {
   sort_order?: number;
 }
 
+function chapterAnchorId(name: string): string {
+  return `chapter-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function resolvePhotoUrl(asset: ApiMediaAsset): string {
+  if (asset.playback_url) return asset.playback_url;
+  if (asset.storage_key) {
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "") || "";
+    const cleanKey = asset.storage_key.replace(/^\/+/, "");
+    return baseUrl ? `${baseUrl}/storage/v1/object/public/memoir-media/${cleanKey}` : "";
+  }
+  return "";
+}
+
 export default function FinalMemoirPage() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const [activeView, setActiveView] = useState<"timeline" | "chapters">("timeline");
-  
+
   const [showScatteredView, setShowScatteredView] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -5379,7 +5905,7 @@ export default function FinalMemoirPage() {
   const [isTurningPage] = useState(false);
   const [openCommentsId, setOpenCommentsId] = useState<string | null>(null);
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
-  
+
   const [commentsMap, setCommentsMap] = useState<Record<string, CommentItem[]>>({});
   const [liveMemories, setLiveMemories] = useState<MemoryItem[]>([]);
   const [livePhotos, setLivePhotos] = useState<HeroPhoto[]>([]);
@@ -5390,13 +5916,126 @@ export default function FinalMemoirPage() {
   const [memoirId, setMemoirId] = useState<string>("");
   const [subjectName, setSubjectName] = useState<string>("Nadia");
   const [memoirDescription, setMemoirDescription] = useState<string>(
-    "She gave everyone a second chance and made the world warmer."
+    "She gave everyone a second chance and made the world warmer.",
   );
   const [dob, setDob] = useState<string>("1947");
   const [dod, setDod] = useState<string>("2024");
 
+  const [selectedDecade, setSelectedDecade] = useState<string | null>(null);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+
+  // ------- Initial memoir hydration (preview mode OR live data) -------
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const previewId = urlParams.get("preview");
+
+    if (previewId) {
+      const previewRaw = localStorage.getItem(`memoir_preview_${previewId}`);
+      if (previewRaw) {
+        try {
+          const { proposal, feed, excludedMedia } = JSON.parse(previewRaw);
+          setIsPreviewMode(true);
+          setMemoirId(previewId);
+
+          // Try to hydrate subject data from active_memoir storage
+          const savedMemoir = localStorage.getItem("active_memoir");
+          if (savedMemoir) {
+            const parsed = JSON.parse(savedMemoir);
+            const obj = parsed.data || parsed;
+            if (obj.subject_name) setSubjectName(obj.subject_name);
+            if (obj.description) setMemoirDescription(obj.description);
+            if (obj.subject_born_on) setDob(obj.subject_born_on.substring(0, 4));
+            if (obj.subject_died_on) setDod(obj.subject_died_on.substring(0, 4));
+            else if (obj.subject_is_living) setDod("Present");
+          }
+
+          const chapterOrderList: string[] = proposal.chapters.map((c: { title: string }) => c.title);
+          setLiveChaptersList(chapterOrderList);
+
+          const photosExtracted: HeroPhoto[] = [];
+          const decadeSet = new Set<string>();
+          const mapped: MemoryItem[] = [];
+
+          proposal.chapters.forEach((ch: { title: string; summary?: string; memories: { id: string }[] }) => {
+            ch.memories.forEach((memRef) => {
+              const rawMem: ApiMemoryRecord | undefined = feed.find(
+                (f: ApiMemoryRecord) => f.id === memRef.id,
+              );
+              if (!rawMem) return;
+
+              const excludedIds: string[] = (excludedMedia && excludedMedia[rawMem.id]) || [];
+
+              const allAssets = rawMem.media_assets || [];
+              const visibleAssets = allAssets.filter((a) => !excludedIds.includes(a.id));
+
+              const photoAssets = visibleAssets.filter((a) => a.kind === "photo");
+              const audioAssets = visibleAssets.filter((a) => a.kind === "audio");
+
+              const images: MemoryImage[] = photoAssets
+                .map((a) => ({
+                  id: a.id,
+                  url: resolvePhotoUrl(a),
+                  caption: a.caption || rawMem.title || "Archive photo",
+                }))
+                .filter((i) => Boolean(i.url));
+
+              const audioClips: MemoryAudio[] = audioAssets
+                .map((a) => ({
+                  id: a.id,
+                  url: resolvePhotoUrl(a),
+                  caption: a.caption,
+                  transcript: a.transcript ?? null,
+                }))
+                .filter((a) => Boolean(a.url));
+
+              images.forEach((img) => photosExtracted.push(img));
+
+              const rawDate = rawMem.occurred_start || rawMem.created_at;
+              if (rawDate) {
+                const year = new Date(rawDate).getFullYear();
+                if (!isNaN(year)) decadeSet.add(`${Math.floor(year / 10) * 10}s`);
+              }
+
+              const formattedDate = rawMem.occurred_start
+                ? new Date(rawMem.occurred_start).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : new Date(rawMem.created_at).toLocaleDateString();
+
+              mapped.push({
+                id: rawMem.id,
+                author: "Family Member",
+                title: rawMem.title || "Memory Entry",
+                text: rawMem.body_text || "",
+                reactionsCount: 0,
+                imageUrl: images[0]?.url,
+                imageCaption: photoAssets[0]?.caption,
+                images: images.length ? images : undefined,
+                audioClips: audioClips.length ? audioClips : undefined,
+                chapter: ch.title,
+                chapterSubtitle: ch.summary,
+                date: formattedDate,
+              });
+            });
+          });
+
+          setLiveMemories(mapped);
+          if (photosExtracted.length > 0) setLivePhotos(photosExtracted);
+          if (decadeSet.size > 0) setLiveDecadesList(Array.from(decadeSet).sort());
+
+          setLoadingFeed(false);
+          return; // stop; skip live fetch in preview mode
+        } catch (err) {
+          console.error("Failed to parse preview payload:", err);
+        }
+      }
+    }
+
+    // Normal (non-preview) memoir hydration path
     try {
       const savedMemoir = localStorage.getItem("active_memoir");
       if (savedMemoir) {
@@ -5405,28 +6044,22 @@ export default function FinalMemoirPage() {
         if (obj.id) setMemoirId(obj.id);
         if (obj.subject_name) {
           setSubjectName(obj.subject_name);
-          setPdfFileName(`${obj.subject_name.toLowerCase().replace(/\s+/g, '-')}-story`);
+          setPdfFileName(`${obj.subject_name.toLowerCase().replace(/\s+/g, "-")}-story`);
         }
-        if (obj.description) {
-          setMemoirDescription(obj.description);
-        }
-        if (obj.subject_born_on) {
-          setDob(obj.subject_born_on.substring(0, 4));
-        }
-        if (obj.subject_died_on) {
-          setDod(obj.subject_died_on.substring(0, 4));
-        } else if (obj.subject_is_living) {
-          setDod("Present");
-        }
+        if (obj.description) setMemoirDescription(obj.description);
+        if (obj.subject_born_on) setDob(obj.subject_born_on.substring(0, 4));
+        if (obj.subject_died_on) setDod(obj.subject_died_on.substring(0, 4));
+        else if (obj.subject_is_living) setDod("Present");
       }
     } catch (err) {
       console.error("Failed to parse active memoir", err);
     }
   }, []);
 
+  // ------- Live memoir hydration from API (only when NOT in preview mode) -------
   useEffect(() => {
-    if (!memoirId) {
-      setLoadingFeed(false);
+    if (!memoirId || isPreviewMode) {
+      if (!memoirId) setLoadingFeed(false);
       return;
     }
 
@@ -5434,7 +6067,7 @@ export default function FinalMemoirPage() {
       try {
         setLoadingFeed(true);
         const liveData = await api.getLiveMemoir(memoirId);
-        
+
         if (liveData.memoir) {
           const m = liveData.memoir;
           if (m.subject_name) setSubjectName(m.subject_name);
@@ -5463,19 +6096,8 @@ export default function FinalMemoirPage() {
           const decadeSet = new Set<string>();
 
           const mapped: MemoryItem[] = memoriesData.map((record) => {
-            // Collect ALL photos attached to this memory, not just the first —
-            // a memory can legitimately have several (memory_media is many-to-many).
             const photoAssets = record.media_assets?.filter((m) => m.kind === "photo") || [];
-
-            const resolvePhotoUrl = (asset: ApiMediaAsset): string => {
-              if (asset.playback_url) return asset.playback_url;
-              if (asset.storage_key) {
-                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '') || "";
-                const cleanKey = asset.storage_key.replace(/^\/+/, "");
-                return baseUrl ? `${baseUrl}/storage/v1/object/public/memoir-media/${cleanKey}` : "";
-              }
-              return "";
-            };
+            const audioAssets = record.media_assets?.filter((m) => m.kind === "audio") || [];
 
             const images: MemoryImage[] = photoAssets
               .map((asset) => ({
@@ -5485,7 +6107,15 @@ export default function FinalMemoirPage() {
               }))
               .filter((img) => Boolean(img.url));
 
-            // Keep a single "first photo" too, for the hero carousel / back-compat.
+            const audioClips: MemoryAudio[] = audioAssets
+              .map((asset) => ({
+                id: asset.id,
+                url: resolvePhotoUrl(asset),
+                caption: asset.caption,
+                transcript: asset.transcript ?? null,
+              }))
+              .filter((a) => Boolean(a.url));
+
             const firstPhoto = photoAssets[0];
             const photoUrl = images[0]?.url || "";
 
@@ -5501,12 +6131,17 @@ export default function FinalMemoirPage() {
             }
 
             const formattedDate = record.occurred_start
-              ? new Date(record.occurred_start).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+              ? new Date(record.occurred_start).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
               : new Date(record.created_at).toLocaleDateString();
 
-            const assignedChapterInfo = record.chapter_id && chapterMap[record.chapter_id]
-              ? chapterMap[record.chapter_id]
-              : { title: "Memoir Reflections", summary: "Stories and preserved moments." };
+            const assignedChapterInfo =
+              record.chapter_id && chapterMap[record.chapter_id]
+                ? chapterMap[record.chapter_id]
+                : { title: "Memoir Reflections", summary: "Stories and preserved moments." };
 
             return {
               id: record.id,
@@ -5517,6 +6152,7 @@ export default function FinalMemoirPage() {
               imageUrl: photoUrl || undefined,
               imageCaption: firstPhoto?.caption,
               images: images.length > 0 ? images : undefined,
+              audioClips: audioClips.length > 0 ? audioClips : undefined,
               chapter: assignedChapterInfo.title,
               chapterSubtitle: assignedChapterInfo.summary,
               date: formattedDate,
@@ -5535,7 +6171,7 @@ export default function FinalMemoirPage() {
     }
 
     fetchLiveMemoirData();
-  }, [memoirId]);
+  }, [memoirId, isPreviewMode]);
 
   const activeMemories = liveMemories.length > 0 ? liveMemories : mockMemories;
   const activeHeroPhotos = livePhotos.length > 0 ? livePhotos : mockHeroPhotos;
@@ -5637,12 +6273,12 @@ export default function FinalMemoirPage() {
     if (!text || !text.trim()) return;
 
     if (!isValidUuid(id)) {
-      const fallbackComment: CommentItem = { 
-        id: Date.now().toString(), 
-        author: "You", 
-        text: text.trim(), 
-        time: "Just now", 
-        replies: [] 
+      const fallbackComment: CommentItem = {
+        id: Date.now().toString(),
+        author: "You",
+        text: text.trim(),
+        time: "Just now",
+        replies: [],
       };
       setCommentsMap((prev) => ({ ...prev, [id]: [...(prev[id] || []), fallbackComment] }));
       setCommentInputs((prev) => ({ ...prev, [id]: "" }));
@@ -5664,9 +6300,9 @@ export default function FinalMemoirPage() {
         replies: [],
       };
 
-      setCommentsMap((prev) => ({ 
-        ...prev, 
-        [id]: [...(prev[id] || []), formattedComment] 
+      setCommentsMap((prev) => ({
+        ...prev,
+        [id]: [...(prev[id] || []), formattedComment],
       }));
       setCommentInputs((prev) => ({ ...prev, [id]: "" }));
     } catch (err) {
@@ -5683,16 +6319,13 @@ export default function FinalMemoirPage() {
         const memoryComments = prev[memoryId] || [];
         const updated = memoryComments.map((c) => {
           if (c.id === commentId) {
-            const replyItem: ReplyItem = { 
-              id: Date.now().toString(), 
-              author: "You", 
-              text: replyText.trim(), 
-              time: "Just now" 
+            const replyItem: ReplyItem = {
+              id: Date.now().toString(),
+              author: "You",
+              text: replyText.trim(),
+              time: "Just now",
             };
-            return {
-              ...c,
-              replies: [...(c.replies || []), replyItem]
-            };
+            return { ...c, replies: [...(c.replies || []), replyItem] };
           }
           return c;
         });
@@ -5719,10 +6352,7 @@ export default function FinalMemoirPage() {
               text: newReply.body,
               time: new Date(newReply.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             };
-            return {
-              ...c,
-              replies: [...(c.replies || []), replyItem]
-            };
+            return { ...c, replies: [...(c.replies || []), replyItem] };
           }
           return c;
         });
@@ -5748,17 +6378,29 @@ export default function FinalMemoirPage() {
       (mem.author && mem.author.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (mem.imageCaption && mem.imageCaption.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (mem.title && mem.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
+
+    const matchesDecade =
+      !selectedDecade ||
+      (() => {
+        const year = new Date(mem.date).getFullYear();
+        if (isNaN(year)) return false;
+        return `${Math.floor(year / 10) * 10}s` === selectedDecade;
+      })();
+
+    return matchesSearch && matchesDecade;
   });
 
-const memoryChapterNames = Array.from(new Set(activeMemories.map((m) => m.chapter)));
-const uniqueChapters = liveChaptersList.length > 0
-  ? [...liveChaptersList, ...memoryChapterNames.filter((c) => !liveChaptersList.includes(c))]
-  : memoryChapterNames;
+  const memoryChapterNames = Array.from(new Set(activeMemories.map((m) => m.chapter)));
+  const uniqueChapters =
+    liveChaptersList.length > 0
+      ? [...liveChaptersList, ...memoryChapterNames.filter((c) => !liveChaptersList.includes(c))]
+      : memoryChapterNames;
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] font-serif text-stone-900 selection:bg-memory-maroon/20">
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .font-serif { font-family: "Times New Roman", Times, serif !important; }
         .book-text { hyphens: auto; -webkit-hyphens: auto; -ms-hyphens: auto; }
         @keyframes scribble {
@@ -5772,12 +6414,20 @@ const uniqueChapters = liveChaptersList.length > 0
         .cursor-blink::after { content: '|'; animation: blink 1s step-start infinite; }
         @keyframes blink { 50% { opacity: 0; } }
         .clearfix::after { content: ""; clear: both; display: table; }
-      `}} />
+      `,
+        }}
+      />
 
       <MemoirHeader isVisible={isVisible} />
 
-      <MemoirHero 
-        onOpenGallery={() => setShowScatteredView(true)} 
+      {isPreviewMode && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-amber-100 border border-amber-300 text-amber-900 text-xs font-serif italic px-4 py-2 rounded-full shadow-md">
+          Preview Mode — this proposal is not yet applied
+        </div>
+      )}
+
+      <MemoirHero
+        onOpenGallery={() => setShowScatteredView(true)}
         subjectName={subjectName}
         description={memoirDescription}
         dob={dob}
@@ -5785,12 +6435,12 @@ const uniqueChapters = liveChaptersList.length > 0
         heroPhotos={activeHeroPhotos}
       />
 
-      <div className="max-w-4xl mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
+      <div className="max-w-7xl mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
         <div className="w-full h-[1px] bg-stone-300"></div>
         <div className="w-full h-[1px] bg-stone-300"></div>
       </div>
 
-      <MemoirActionBar 
+      <MemoirActionBar
         pdfFileName={pdfFileName}
         setPdfFileName={setPdfFileName}
         triggerExport={triggerExport}
@@ -5800,20 +6450,26 @@ const uniqueChapters = liveChaptersList.length > 0
         isTyping={isTyping}
       />
 
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-12">
-        <main style={{ perspective: "2500px" }} className="flex-1 max-w-3xl">
-          <div 
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-12">
+        <main style={{ perspective: "2500px" }} className="flex-1 max-w-4xl">
+          <div
             className={`relative bg-[#FCFBF8] border border-stone-200/80 px-6 md:px-10 py-6 rounded-sm pb-16 origin-left overflow-hidden ${
-              isTurningPage 
-                ? "transition-all duration-700 ease-[cubic-bezier(0.645,0.045,0.355,1)] opacity-0 [transform:rotateY(-130deg)_rotateX(4deg)_scale(0.95)] shadow-2xl brightness-50" 
+              isTurningPage
+                ? "transition-all duration-700 ease-[cubic-bezier(0.645,0.045,0.355,1)] opacity-0 [transform:rotateY(-130deg)_rotateX(4deg)_scale(0.95)] shadow-2xl brightness-50"
                 : "transition-opacity duration-500 ease-in opacity-100 [transform:rotateY(0deg)_rotateX(0deg)_scale(1)] shadow-[0_4px_24px_rgba(0,0,0,0.04),inset_0_0_60px_rgba(90,24,39,0.02)] brightness-100"
             }`}
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E")`,
             }}
           >
-            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-black/5 via-black/0 to-transparent pointer-events-none" style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-black/5 via-transparent to-transparent pointer-events-none" style={{ clipPath: 'polygon(0 100%, 0 0, 100% 100%)' }} />
+            <div
+              className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-black/5 via-black/0 to-transparent pointer-events-none"
+              style={{ clipPath: "polygon(100% 0, 0 0, 100% 100%)" }}
+            />
+            <div
+              className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-black/5 via-transparent to-transparent pointer-events-none"
+              style={{ clipPath: "polygon(0 100%, 0 0, 100% 100%)" }}
+            />
 
             {loadingFeed ? (
               <div className="py-20 text-center text-stone-400 font-serif italic">
@@ -5829,23 +6485,34 @@ const uniqueChapters = liveChaptersList.length > 0
                 if (chapterMemories.length === 0) return null;
                 const chapterSub = chapterMemories[0].chapterSubtitle;
 
-                // Issue 4: Extract images to Chapter Gallery
                 const chapterImages = chapterMemories.flatMap((m) => {
                   if (m.images && m.images.length > 0) {
                     return m.images.map((img) => ({
-                    id: img.id,
-                    url: img.url,
-                    caption: img.caption || m.title || "",
-                }));
-  }
-  if (m.imageUrl) {
-    return [{ id: m.id, url: m.imageUrl, caption: m.imageCaption || m.title || "" }];
-  }
-  return [];
-});
+                      id: img.id,
+                      url: img.url,
+                      caption: img.caption || m.title || "",
+                    }));
+                  }
+                  if (m.imageUrl) {
+                    return [{ id: m.id, url: m.imageUrl, caption: m.imageCaption || m.title || "" }];
+                  }
+                  return [];
+                });
+
+                const chapterAudios = Array.from(
+                  new Map(
+                    chapterMemories
+                      .flatMap((m) => m.audioClips || [])
+                      .map((a) => [a.id, a]),
+                  ).values(),
+                );
 
                 return (
-                  <div key={`chapter-sec-${chapterName}-${chapterIdx}`} className="mb-10">
+                  <div
+                    key={`chapter-sec-${chapterName}-${chapterIdx}`}
+                    id={chapterAnchorId(chapterName)}
+                    className="mb-10 scroll-mt-28"
+                  >
                     <div className="mb-4 mt-4 text-left relative flex flex-col">
                       <div className="w-full h-[2px] bg-stone-800 mb-3"></div>
                       <h2 className="text-3xl md:text-4xl font-serif text-stone-900 mb-2 leading-tight">
@@ -5858,20 +6525,20 @@ const uniqueChapters = liveChaptersList.length > 0
                       )}
                     </div>
 
-                    {/* Scrollable Gallery */}
                     {chapterImages.length > 0 && (
-                      <div 
-                        className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-2 mb-8"
-                        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                      <div
+                        className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-2 pb-4 mb-8
+                                   [&::-webkit-scrollbar]:h-1.5
+                                   [&::-webkit-scrollbar-track]:bg-stone-100
+                                   [&::-webkit-scrollbar-thumb]:bg-memory-maroon/40
+                                   [&::-webkit-scrollbar-thumb]:rounded-full"
                       >
-                        <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
                         {chapterImages.map((img, idx) => (
-                          <figure 
-                            key={`ch-img-${img.id}-${idx}`} 
+                          <figure
+                            key={`ch-img-${img.id}-${idx}`}
                             className="snap-center shrink-0 w-72 md:w-80 bg-white p-2 border border-stone-200 shadow-sm"
                           >
                             <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                              {/* Using standard img tag here prevents Next.js parser crashes */}
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={img.url} alt={img.caption} className="w-full h-full object-cover" />
                             </div>
@@ -5885,22 +6552,90 @@ const uniqueChapters = liveChaptersList.length > 0
                       </div>
                     )}
 
-                    {chapterMemories.map((mem) => (
-                      <MemoryCard 
-                        key={`mem-card-${mem.id}`}
-                        mem={mem}
-                        isHighlighted={mem.reactionsCount > 20}
-                        currentReaction={reactions[mem.id] || { count: mem.reactionsCount, reacted: false }}
-                        handleToggleReaction={handleToggleReaction}
-                        isCommentsOpen={openCommentsId === mem.id}
-                        setOpenCommentsId={setOpenCommentsId}
-                        commentsList={commentsMap[mem.id] || []}
-                        commentInputValue={commentInputs[mem.id] || ""}
-                        setCommentInputValue={(val) => setCommentInputs({ ...commentInputs, [mem.id]: val })}
-                        handlePostComment={handlePostComment}
-                        handlePostReply={(commentId, replyText) => handlePostReply(mem.id, commentId, replyText)}
-                      />
-                    ))}
+                    {chapterAudios.length > 0 && (
+                      <div className="mb-8 space-y-4">
+                        <div className="text-[10px] uppercase tracking-widest text-stone-500 font-mono font-semibold">
+                          Voice Archives
+                        </div>
+                        {chapterAudios.map((a) => (
+                          <div
+                            key={a.id}
+                            className="bg-[#f5f3ef] border border-stone-200 rounded-sm p-4 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-stone-500 font-mono mb-3">
+                              <span className="truncate pr-3 font-semibold text-stone-700">
+                                {a.caption || "Audio Recording"}
+                              </span>
+                              <span>Press Play</span>
+                            </div>
+                            <audio
+                              controls
+                              src={a.url}
+                              className="w-full h-8 opacity-80 filter contrast-125 rounded-sm"
+                            />
+
+                            {a.transcript && a.transcript.display_text && (
+                              <div className="mt-4 pt-3 border-t border-stone-200/60">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-semibold uppercase tracking-wider text-memory-maroon block">
+                                    Transcript
+                                  </span>
+                                  {a.transcript.confidence && (
+                                    <span className="text-[9px] text-stone-400 font-mono">
+                                      Confidence: {Math.round(a.transcript.confidence * 100)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="font-serif text-[14px] text-stone-800 italic leading-relaxed mt-1">
+                                  “{a.transcript.display_text}”
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(() => {
+                      const uniqueAuthors = Array.from(
+                        new Set(chapterMemories.map((m) => m.author).filter(Boolean)),
+                      ).join(", ");
+
+                      const combinedReactions = chapterMemories.reduce(
+                        (sum, m) => sum + (m.reactionsCount || 0),
+                        0,
+                      );
+
+                      const anchorId = chapterMemories[0].id;
+
+                      const combinedMemory: MemoryItem = {
+                        id: anchorId,
+                        author: uniqueAuthors || "Family Member",
+                        title: undefined,
+                        text: "",
+                        reactionsCount: combinedReactions,
+                        chapter: chapterName,
+                        chapterSubtitle: chapterSub,
+                        date: chapterMemories[0].date,
+                      };
+
+                      return (
+                        <MemoryCard
+                          key={`chapter-narrative-${chapterName}-${chapterIdx}`}
+                          mem={combinedMemory}
+                          isHighlighted={combinedMemory.reactionsCount > 20}
+                          currentReaction={reactions[anchorId] || { count: combinedReactions, reacted: false }}
+                          handleToggleReaction={handleToggleReaction}
+                          isCommentsOpen={openCommentsId === anchorId}
+                          setOpenCommentsId={setOpenCommentsId}
+                          commentsList={commentsMap[anchorId] || []}
+                          commentInputValue={commentInputs[anchorId] || ""}
+                          setCommentInputValue={(val) => setCommentInputs({ ...commentInputs, [anchorId]: val })}
+                          handlePostComment={handlePostComment}
+                          handlePostReply={(commentId, replyText) => handlePostReply(anchorId, commentId, replyText)}
+                        />
+                      );
+                    })()}
                   </div>
                 );
               })
@@ -5908,11 +6643,12 @@ const uniqueChapters = liveChaptersList.length > 0
 
             {filteredMemories.length > 0 && (
               <div className="mt-16 flex flex-col items-center justify-center opacity-90 pb-8">
-                <div 
+                <div
                   className="relative w-20 h-20 bg-memory-maroon flex items-center justify-center cursor-default group"
                   style={{
-                    boxShadow: "0 4px 10px rgba(0,0,0,0.2), inset 0 -4px 8px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.2)",
-                    borderRadius: "50% 48% 52% 49% / 49% 51% 48% 52%"
+                    boxShadow:
+                      "0 4px 10px rgba(0,0,0,0.2), inset 0 -4px 8px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.2)",
+                    borderRadius: "50% 48% 52% 49% / 49% 51% 48% 52%",
                   }}
                 >
                   <div className="absolute -top-1 right-2 w-3 h-3 rounded-full bg-memory-maroon shadow-[inset_0_-1px_2px_rgba(0,0,0,0.2)]"></div>
@@ -5923,7 +6659,7 @@ const uniqueChapters = liveChaptersList.length > 0
                     </span>
                   </div>
                 </div>
-                
+
                 <div className="mt-8 text-center border-t border-stone-200/60 pt-6 flex flex-col items-center">
                   <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-stone-400 mb-4 font-semibold">
                     Sealed & Shared
@@ -5937,93 +6673,28 @@ const uniqueChapters = liveChaptersList.length > 0
           </div>
         </main>
 
-        <MemoirSidebar 
+        <MemoirSidebar
           activeView={activeView}
           setActiveView={setActiveView}
           mockShortQuotes={mockShortQuotes}
           chapters={liveChaptersList}
           decades={liveDecadesList}
+          activeDecade={selectedDecade}
+          onSelectChapter={(chapterName) => {
+            document
+              .getElementById(chapterAnchorId(chapterName))
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          onSelectDecade={(decade) => {
+            setSelectedDecade((prev) => (prev === decade ? null : decade));
+          }}
         />
       </div>
 
       {showScatteredView && (
-        <ScatteredGallery 
-          heroPhotos={activeHeroPhotos} 
-          onClose={() => setShowScatteredView(false)} 
-        />
+        <ScatteredGallery heroPhotos={activeHeroPhotos} onClose={() => setShowScatteredView(false)} />
       )}
     </div>
-  );
-}
-</file>
-
-<file path="src/app/globals.css">
-/* The stylesheet used containing tailwind and css rules applied accross application */
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-
-  /* Shared Theme Tokens for your custom color palette */
-  --memory-bg: #faf8f5;
-  --memory-primary: #381c24;
-  --memory-accent: #c9a063;
-  --memory-border: #f0e4d3;
-  --memory-muted: #78716c;
-  --memory-maroon: #4a222a;
-  --memory-card: #fdf8ed;
-  --memory-light: #fefaf1;
-  --memory-dark-end: #12070b;
-
-  /* Semantic form token */
-  --memory-required: #dc2626;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-
-  --font-sans: var(--font-inter), sans-serif;
-  --font-serif: var(--font-playfair), serif;
-  --font-caveat: var(--font-caveat), cursive;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  /* Registering the shared color tokens for Tailwind utility classes */
-  --color-memory-bg: var(--memory-bg);
-  --color-memory-primary: var(--memory-primary);
-  --color-memory-accent: var(--memory-accent);
-  --color-memory-border: var(--memory-border);
-  --color-memory-muted: var(--memory-muted);
-  --color-memory-maroon: var(--memory-maroon);
-  --color-memory-card: var(--memory-card);
-  --color-memory-light: var(--memory-light);
-  --color-memory-dark-end: var(--memory-dark-end);
-
-  /* Semantic form token */
-  --color-memory-required: var(--memory-required);
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-}
-</file>
-
-<file path="src/app/page.tsx">
-'use client';
-
-import Hero from "../features/landingPage/Hero";
-import LandingPageScroll from "../features/landingPage/LandingPageScroll";
-
-export default function Home() {
-  
-  return (
-    <main>
-      <Hero />
-      <LandingPageScroll />
-    </main>
   );
 }
 </file>
@@ -6386,6 +7057,12 @@ export interface MemoryCreatePayload {
   media_asset_ids?: string[];
 }
 
+export interface MemoryUpdatePayload {
+  title?: string;
+  body_text?: string;
+  occurred_start?: string | null;
+}
+
 export interface PresignedUrlPayload {
   memoir_id: string;
   filename: string;
@@ -6433,7 +7110,7 @@ export interface CommentCreatePayload {
 export interface ChapterProposalPayload {
   chapters: {
     title: string;
-    summary?: string; // Added summary
+    summary?: string;
     memories: { id: string; title: string; date: string | null }[];
   }[];
 }
@@ -6503,6 +7180,19 @@ export const api = {
       throw new Error(parseErrorDetail(errData, "Failed to create memory"));
     }
     return res.json();
+  },
+
+  async updateMemory(memoryId: string, payload: MemoryUpdatePayload) {
+    const res = await apiFetch(`/api/memories/${memoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData: ApiErrorResponse = await res.json().catch(() => ({}));
+      throw new Error(parseErrorDetail(errData, "Failed to update memory"));
+    }
+    const json = await res.json();
+    return json.data || json;
   },
 
   async deleteMemory(memoryId: string) {
@@ -6623,7 +7313,6 @@ export const api = {
     return json.data;
   },
 
-  // ADD THIS NEW METHOD
   async refineChapters(memoirId: string, currentProposal: ChapterProposalPayload, prompt: string) {
     const res = await apiFetch(`/api/memoirs/${memoirId}/chapters/refine`, {
       method: "POST",
@@ -6642,6 +7331,15 @@ export const api = {
     if (!res.ok) throw new Error("Failed to apply chapter layout");
     return res.json();
   },
+
+  async getUserActiveMemoir() {
+    const res = await apiFetch("/api/memoirs/user/active", {
+      method: "GET",
+    });
+    if (!res.ok) throw new Error("Failed to fetch active memoir for user");
+    const json = await res.json();
+    return json.data || json;
+  },
 };
 </file>
 
@@ -6656,18 +7354,26 @@ export const api = {
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loginSchema, LoginInput } from "./schemas";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "./hooks";
+import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
+  const router = useRouter();
   const [rememberMe, setRememberMe] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const { loading, serverError, setServerError, handleLogin } = useAuth();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const {
     register,
@@ -6710,22 +7416,24 @@ export default function LoginForm() {
 
         {/* Server Error / Info Banners with Accessibility Role */}
         {serverError && (
-          <div role="alert" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             Login Failed: {serverError}
           </div>
         )}
 
         {infoMessage && (
-          <div role="status" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="status"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             {infoMessage}
           </div>
         )}
 
-        <form
-          onSubmit={handleSubmit(handleLogin)}
-          className="flex flex-col gap-4"
-          noValidate
-        >
+        <form onSubmit={handleSubmit(handleLogin)} className="flex flex-col gap-4" noValidate>
           <div>
             <label
               htmlFor="login-email"
@@ -6784,17 +7492,18 @@ export default function LoginForm() {
             />
 
             {errors.password && (
-              <p id="login-password-error" role="alert" className="mt-1 text-xs text-red-600 font-medium">
+              <p
+                id="login-password-error"
+                role="alert"
+                className="mt-1 text-xs text-red-600 font-medium"
+              >
                 {errors.password.message}
               </p>
             )}
           </div>
 
           <div className="flex justify-between items-center text-sm text-memory-muted py-1">
-            <label
-              htmlFor="remember-me"
-              className="flex items-center gap-2 cursor-pointer"
-            >
+            <label htmlFor="remember-me" className="flex items-center gap-2 cursor-pointer">
               <input
                 id="remember-me"
                 type="checkbox"
@@ -6832,10 +7541,7 @@ export default function LoginForm() {
         {/* Footer Link */}
         <div className="border border-memory-border rounded-2xl mt-8 py-4 text-center text-sm text-memory-muted bg-memory-bg">
           Not a member yet?{" "}
-          <Link
-            href="/signup"
-            className="text-memory-primary font-semibold ml-1 hover:underline underline-offset-2"
-          >
+          <Link href="/signup" className="text-memory-primary font-semibold ml-1 hover:underline underline-offset-2">
             Sign up
           </Link>
         </div>
@@ -6849,8 +7555,8 @@ export default function LoginForm() {
 /**
  * @file signupForm.tsx
  * @description Client-side React component that renders the user registration form,
- * manages form field validation via React Hook Form and Zod, and delegates network actions 
- * and submission states to the useAuth custom hook while maintaining side-by-side 
+ * manages form field validation via React Hook Form and Zod, and delegates network actions
+ * and submission states to the useAuth custom hook while maintaining side-by-side
  * password fields, exact login styling specs, and strict accessibility attributes.
  */
 
@@ -6866,18 +7572,27 @@ import { useAuth } from "./hooks";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const extendedSignupSchema = signupSchema.extend({
-  confirmPassword: z.string().min(1, "Please confirm your password"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match!",
-  path: ["confirmPassword"],
-});
+const extendedSignupSchema = signupSchema
+  .extend({
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match!",
+    path: ["confirmPassword"],
+  });
 
 type ExtendedSignupInput = z.infer<typeof extendedSignupSchema>;
 
 export default function SignupForm() {
   const router = useRouter();
   const { loading, serverError, successMessage, handleSignup } = useAuth();
+
+  // If already logged in, go to dashboard
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const {
     register,
@@ -6887,18 +7602,12 @@ export default function SignupForm() {
     resolver: zodResolver(extendedSignupSchema),
   });
 
-  useEffect(() => {
-    if (successMessage) {
-      router.push("/dashboard");
-    }
-  }, [successMessage, router]);
-
   const onSubmit = async (data: ExtendedSignupInput) => {
     try {
-      const success = await handleSignup(data);
-      if (success) {
-        router.push("/dashboard");
-      }
+      await handleSignup(data);
+      // routing is handled inside the hook:
+      // - if token exists -> /dashboard
+      // - if confirmation required -> /login (after showing message)
     } catch (err) {
       console.error("Signup error:", err);
     }
@@ -6942,13 +7651,19 @@ export default function SignupForm() {
 
         {/* Server Success / Error Banners with Accessibility Role */}
         {serverError && (
-          <div role="alert" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             Signup Failed: {serverError}
           </div>
         )}
 
         {successMessage && (
-          <div role="status" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="status"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             {successMessage}
           </div>
         )}
@@ -7016,7 +7731,7 @@ export default function SignupForm() {
             )}
           </div>
 
-          {/* Passwords in the same line */}
+          {/* Passwords */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label
@@ -7094,7 +7809,6 @@ export default function SignupForm() {
           </motion.button>
         </form>
 
-        {/* Terms and Conditions Footer */}
         <p className="text-center text-sm text-memory-muted mt-8">
           By clicking continue you agree to the{" "}
           <span className="text-memory-primary font-medium cursor-pointer hover:underline underline-offset-2">

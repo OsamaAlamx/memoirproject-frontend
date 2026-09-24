@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { DashboardSidebar } from "./components/DashboardSidebar";
@@ -10,6 +10,7 @@ import { MemoryFeed } from "./components/MemoryFeed";
 import MemoryFeedList from "./MemoryFeedList";
 import { BookCoverExperience } from "./BookCoverExperience";
 import { ChapterOrganizer } from "./components/ChapterOrganizer";
+import { api } from "@/lib/api/client";
 
 interface MemoirData {
   id?: string;
@@ -31,90 +32,100 @@ interface MemoirLocalStorageData {
 export default function OwnerDashboardPage() {
   const [activeTab, setActiveTab] = useState<string>("feed");
   const [memoirId, setMemoirId] = useState<string>("");
-  const [subjectName, setSubjectName] = useState<string>("Ahmad Khan");
-  const [dob, setDob] = useState<string>("1942");
-  const [dod, setDod] = useState<string>("2024");
+  const [subjectName, setSubjectName] = useState<string>("");
+  const [dob, setDob] = useState<string>("");
+  const [dod, setDod] = useState<string>("");
+  const [loadingMemoir, setLoadingMemoir] = useState<boolean>(true);
 
   const router = useRouter();
 
-  // Changes whenever a new memory is successfully created.
-  // This forces MemoryFeedList to remount and fetch the latest data.
-  const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
-
+  // Guard: if no token, redirect to login
   useEffect(() => {
-    try {
-      const savedMemoir = localStorage.getItem("active_memoir");
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [router]);
 
-      if (savedMemoir) {
-        const parsed = JSON.parse(
-          savedMemoir
-        ) as MemoirLocalStorageData;
+  const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
+  const [memoryCount, setMemoryCount] = useState<number>(0);
 
-        const memoirObj = parsed.data || parsed;
+  const applyMemoirData = useCallback((memoirObj: MemoirData) => {
+    if (memoirObj.id) setMemoirId(memoirObj.id);
+    if (memoirObj.subject_name) setSubjectName(memoirObj.subject_name);
+    if (memoirObj.subject_born_on) setDob(memoirObj.subject_born_on.substring(0, 4));
 
-        if (memoirObj.id) {
-          setMemoirId(memoirObj.id);
-        }
-
-        if (memoirObj.subject_name) {
-          setSubjectName(memoirObj.subject_name);
-        }
-
-        if (memoirObj.subject_born_on) {
-          setDob(memoirObj.subject_born_on.substring(0, 4));
-        }
-
-        if (memoirObj.subject_died_on) {
-          setDod(memoirObj.subject_died_on.substring(0, 4));
-        } else if (memoirObj.subject_is_living) {
-          setDod("Present");
-        }
-      }
-    } catch (err: unknown) {
-      console.error(
-        "Failed to read active memoir from localStorage",
-        err
-      );
+    if (memoirObj.subject_died_on) {
+      setDod(memoirObj.subject_died_on.substring(0, 4));
+    } else if (memoirObj.subject_is_living) {
+      setDod("Present");
+    } else {
+      setDod("");
     }
   }, []);
 
+  // Hydrate memoir from localStorage or fetch from backend API
+
+  useEffect(() => {
+    async function initMemoir() {
+      setLoadingMemoir(true);
+      try {
+        const savedMemoir = localStorage.getItem("active_memoir");
+
+        if (savedMemoir) {
+          const parsed = JSON.parse(savedMemoir) as MemoirLocalStorageData;
+          const memoirObj = parsed.data || parsed;
+
+          if (memoirObj && memoirObj.id) {
+            applyMemoirData(memoirObj);
+            setLoadingMemoir(false);
+            return;
+          }
+        }
+
+        // Fallback to backend API if localStorage is missing or stale
+        const token = localStorage.getItem("access_token");
+        if (token) {
+          const activeMemoir = await api.getUserActiveMemoir().catch(() => null);
+          if (activeMemoir && activeMemoir.id) {
+            localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
+            applyMemoirData(activeMemoir);
+          }
+        }
+      } catch (err: unknown) {
+        console.warn("Could not load active memoir:", err);
+      } finally {
+        setLoadingMemoir(false);
+      }
+    }
+
+    initMemoir();
+  }, [applyMemoirData]);
+
   const metricsData = [
-    {
-      label: "Total Entries",
-      value: "Live",
-    },
-    {
-      label: "Media Vault",
-      value: "Active",
-    },
-    {
-      label: "Collaborators",
-      value: 1,
-    },
+    { label: "Total Entries", value: memoryCount },
+    { label: "Media Vault", value: "Active" },
+    { label: "Collaborators", value: 1 },
   ];
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("active_memoir");
-
     router.push("/");
   };
 
   return (
     <BookCoverExperience
-      title="Personal Life Memoir"
+      title={subjectName ? `${subjectName}'s Memoir` : "Personal Life Memoir"}
       subtitle="A preserved record of personal stories, reflections, and voice notes."
     >
       <div className="flex min-h-screen overflow-hidden rounded-2xl border border-memory-border bg-memory-bg text-memory-primary shadow-lg">
-        <DashboardSidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          memoirId={memoirId}
-        />
+        <DashboardSidebar activeTab={activeTab} setActiveTab={setActiveTab} memoirId={memoirId} />
 
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <DashboardHeader
-            subjectName={subjectName}
+            subjectName={subjectName || "Loading Memoir..."}
             dob={dob}
             dod={dod}
             onLogout={handleLogout}
@@ -127,12 +138,11 @@ export default function OwnerDashboardPage() {
               </p>
 
               <h1 className="font-serif text-2xl font-bold tracking-tight text-memory-maroon sm:text-3xl">
-                Preserve the moments that matter.
+                {subjectName ? `Memoir for ${subjectName}` : "Preserve the moments that matter."}
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-memory-muted">
-                Capture stories, voices, photographs, and memories to build a
-                lasting personal archive.
+                Capture stories, voices, photographs, and memories to build a lasting personal archive.
               </p>
             </div>
 
@@ -140,68 +150,46 @@ export default function OwnerDashboardPage() {
               <MetricsGrid metrics={metricsData} />
             </div>
 
-            {/* =========================
-                FEED TAB
-               ========================= */}
             {activeTab === "feed" && (
               <div className="space-y-10">
                 <MemoryFeed
                   memories={[]}
                   memoirId={memoirId}
-                  onSuccess={() => {
-                    // Incrementing this value changes the key on
-                    // MemoryFeedList, causing it to remount and
-                    // retrieve the newly-created memory.
-                    setFeedRefreshKey((prev) => prev + 1);
-                  }}
+                  onSuccess={() => setFeedRefreshKey((prev) => prev + 1)}
                 />
 
-                {/* The comment must be outside the ternary expression. */}
-                {memoirId ? (
+                {loadingMemoir ? (
+                  <div className="rounded-2xl border border-memory-maroon/20 bg-white p-6 py-12 text-center text-sm text-memory-muted">
+                    Loading your memoir container...
+                  </div>
+                ) : memoirId ? (
                   <MemoryFeedList
                     key={feedRefreshKey}
                     memoirId={memoirId}
+                    onCountChange={setMemoryCount}
                   />
                 ) : (
                   <div className="rounded-2xl border border-memory-maroon/20 bg-white p-6 py-12 text-center text-sm text-memory-muted">
-                    No active memoir container found. Please complete
-                    onboarding.
+                    No active memoir container found. Please complete onboarding or create a new memoir.
                   </div>
                 )}
               </div>
             )}
 
-            {/* =========================
-                CHAPTERS TAB
-               ========================= */}
-            {activeTab === "chapters" && (
+            <div className={activeTab === "chapters" ? "" : "hidden"}>
               <ChapterOrganizer memoirId={memoirId} />
-            )}
+            </div>
 
-            {/* =========================
-                MEDIA TAB
-               ========================= */}
             {activeTab === "media" && (
               <div className="rounded-2xl border border-memory-border bg-white p-8">
-                <h2 className="font-serif text-xl font-semibold text-memory-maroon">
-                  Media Vault
-                </h2>
-
-                <p className="mt-2 text-sm text-memory-muted">
-                  Your media collection will appear here.
-                </p>
+                <h2 className="font-serif text-xl font-semibold text-memory-maroon">Media Vault</h2>
+                <p className="mt-2 text-sm text-memory-muted">Your media collection will appear here.</p>
               </div>
             )}
 
-            {/* =========================
-                TEAM TAB
-               ========================= */}
             {activeTab === "team" && (
               <div className="rounded-2xl border border-memory-border bg-white p-8">
-                <h2 className="font-serif text-xl font-semibold text-memory-maroon">
-                  Collaborators
-                </h2>
-
+                <h2 className="font-serif text-xl font-semibold text-memory-maroon">Collaborators</h2>
                 <p className="mt-2 text-sm text-memory-muted">
                   Your collaborators and team members will appear here.
                 </p>

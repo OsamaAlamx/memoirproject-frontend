@@ -33,7 +33,7 @@ export default function MemoirHero({
   }, [isCarouselHovered, displayPhotos.length]);
 
   return (
-    <section className="pt-36 pb-8 px-6 md:px-12 max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
+    <section className="pt-36 pb-8 px-6 md:px-12 max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
       <div className="flex-1 text-left w-full md:max-w-lg">
         <h2 className="text-5xl md:text-6xl font-serif italic text-memory-maroon font-normal tracking-tight">
           {subjectName}&apos;s Story
@@ -58,9 +58,8 @@ export default function MemoirHero({
         {heroPhotoIndex < displayPhotos.length && displayPhotos.length > 0 && (
           <div className="relative w-full h-full flex items-center justify-center">
             {displayPhotos.map((photo, idx) => {
-              // Ensure we have a string URL, even if it's missing the https protocol
-              if (!photo.url || typeof photo.url !== 'string') return null;
-              
+              if (!photo.url || typeof photo.url !== "string") return null;
+
               return (
                 <div
                   key={photo.id}
@@ -70,14 +69,13 @@ export default function MemoirHero({
                 >
                   <figure className="w-56 md:w-72 bg-white p-2.5 shadow-xl border border-stone-200">
                     <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                      {/* Using standard HTML img tag prevents Next.js from crashing on relative Supabase string errors */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={photo.url}
                         alt={photo.caption || "Archive photo"}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                           (e.target as HTMLElement).style.display = "none";
+                          (e.target as HTMLElement).style.display = "none";
                         }}
                       />
                     </div>
@@ -100,12 +98,7 @@ export default function MemoirHero({
             className="w-56 md:w-72 h-48 md:h-56 bg-white border border-stone-200 shadow-xl flex flex-col items-center justify-center gap-4 transition-colors duration-300 group cursor-pointer"
           >
             <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#FAF9F6] border border-stone-200 flex items-center justify-center group-hover:bg-memory-maroon group-hover:text-white transition-colors text-stone-400">
-              <svg
-                className="w-5 h-5 md:w-6 md:h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"

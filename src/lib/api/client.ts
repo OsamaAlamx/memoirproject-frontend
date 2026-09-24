@@ -76,6 +76,14 @@ export interface MemoryCreatePayload {
   media_asset_ids?: string[];
 }
 
+export interface MemoryUpdatePayload {
+  title?: string;
+  body_text?: string;
+  occurred_start?: string | null;
+  media_asset_ids_to_add?: string[];
+  media_asset_ids_to_remove?: string[];
+}
+
 export interface PresignedUrlPayload {
   memoir_id: string;
   filename: string;
@@ -123,7 +131,7 @@ export interface CommentCreatePayload {
 export interface ChapterProposalPayload {
   chapters: {
     title: string;
-    summary?: string; // Added summary
+    summary?: string;
     memories: { id: string; title: string; date: string | null }[];
   }[];
 }
@@ -193,6 +201,19 @@ export const api = {
       throw new Error(parseErrorDetail(errData, "Failed to create memory"));
     }
     return res.json();
+  },
+
+  async updateMemory(memoryId: string, payload: MemoryUpdatePayload) {
+    const res = await apiFetch(`/api/memories/${memoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData: ApiErrorResponse = await res.json().catch(() => ({}));
+      throw new Error(parseErrorDetail(errData, "Failed to update memory"));
+    }
+    const json = await res.json();
+    return json.data || json;
   },
 
   async deleteMemory(memoryId: string) {
@@ -313,7 +334,6 @@ export const api = {
     return json.data;
   },
 
-  // ADD THIS NEW METHOD
   async refineChapters(memoirId: string, currentProposal: ChapterProposalPayload, prompt: string) {
     const res = await apiFetch(`/api/memoirs/${memoirId}/chapters/refine`, {
       method: "POST",
@@ -331,5 +351,14 @@ export const api = {
     });
     if (!res.ok) throw new Error("Failed to apply chapter layout");
     return res.json();
+  },
+
+  async getUserActiveMemoir() {
+    const res = await apiFetch("/api/memoirs/user/active", {
+      method: "GET",
+    });
+    if (!res.ok) throw new Error("Failed to fetch active memoir for user");
+    const json = await res.json();
+    return json.data || json;
   },
 };

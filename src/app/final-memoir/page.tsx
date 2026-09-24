@@ -13,7 +13,7 @@ import MemoirSidebar from "@/features/FinalMemoir/MemoirSidebar";
 import ScatteredGallery from "@/features/FinalMemoir/ScatteredGallery";
 
 import { mockHeroPhotos, mockMemories, mockShortQuotes } from "@/features/FinalMemoir/mockData";
-import { MemoryItem, HeroPhoto, MemoryImage } from "@/features/FinalMemoir/types";
+import { MemoryItem, HeroPhoto, MemoryImage, MemoryAudio } from "@/features/FinalMemoir/types";
 
 interface ReplyItem {
   id: string;
@@ -36,6 +36,12 @@ interface ApiMediaAsset {
   playback_url?: string;
   storage_key?: string;
   caption?: string;
+  transcript?: {
+    display_text?: string;
+    raw_text?: string;
+    confidence?: number;
+    language?: string;
+  } | null;
 }
 
 interface ApiMemoryRecord {
@@ -56,11 +62,25 @@ interface ApiChapterRecord {
   sort_order?: number;
 }
 
+function chapterAnchorId(name: string): string {
+  return `chapter-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function resolvePhotoUrl(asset: ApiMediaAsset): string {
+  if (asset.playback_url) return asset.playback_url;
+  if (asset.storage_key) {
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "") || "";
+    const cleanKey = asset.storage_key.replace(/^\/+/, "");
+    return baseUrl ? `${baseUrl}/storage/v1/object/public/memoir-media/${cleanKey}` : "";
+  }
+  return "";
+}
+
 export default function FinalMemoirPage() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const [activeView, setActiveView] = useState<"timeline" | "chapters">("timeline");
-  
+
   const [showScatteredView, setShowScatteredView] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +91,7 @@ export default function FinalMemoirPage() {
   const [isTurningPage] = useState(false);
   const [openCommentsId, setOpenCommentsId] = useState<string | null>(null);
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
-  
+
   const [commentsMap, setCommentsMap] = useState<Record<string, CommentItem[]>>({});
   const [liveMemories, setLiveMemories] = useState<MemoryItem[]>([]);
   const [livePhotos, setLivePhotos] = useState<HeroPhoto[]>([]);
@@ -82,13 +102,126 @@ export default function FinalMemoirPage() {
   const [memoirId, setMemoirId] = useState<string>("");
   const [subjectName, setSubjectName] = useState<string>("Nadia");
   const [memoirDescription, setMemoirDescription] = useState<string>(
-    "She gave everyone a second chance and made the world warmer."
+    "She gave everyone a second chance and made the world warmer.",
   );
   const [dob, setDob] = useState<string>("1947");
   const [dod, setDod] = useState<string>("2024");
 
+  const [selectedDecade, setSelectedDecade] = useState<string | null>(null);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+
+  // ------- Initial memoir hydration (preview mode OR live data) -------
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const previewId = urlParams.get("preview");
+
+    if (previewId) {
+      const previewRaw = localStorage.getItem(`memoir_preview_${previewId}`);
+      if (previewRaw) {
+        try {
+          const { proposal, feed, excludedMedia } = JSON.parse(previewRaw);
+          setIsPreviewMode(true);
+          setMemoirId(previewId);
+
+          // Try to hydrate subject data from active_memoir storage
+          const savedMemoir = localStorage.getItem("active_memoir");
+          if (savedMemoir) {
+            const parsed = JSON.parse(savedMemoir);
+            const obj = parsed.data || parsed;
+            if (obj.subject_name) setSubjectName(obj.subject_name);
+            if (obj.description) setMemoirDescription(obj.description);
+            if (obj.subject_born_on) setDob(obj.subject_born_on.substring(0, 4));
+            if (obj.subject_died_on) setDod(obj.subject_died_on.substring(0, 4));
+            else if (obj.subject_is_living) setDod("Present");
+          }
+
+          const chapterOrderList: string[] = proposal.chapters.map((c: { title: string }) => c.title);
+          setLiveChaptersList(chapterOrderList);
+
+          const photosExtracted: HeroPhoto[] = [];
+          const decadeSet = new Set<string>();
+          const mapped: MemoryItem[] = [];
+
+          proposal.chapters.forEach((ch: { title: string; summary?: string; memories: { id: string }[] }) => {
+            ch.memories.forEach((memRef) => {
+              const rawMem: ApiMemoryRecord | undefined = feed.find(
+                (f: ApiMemoryRecord) => f.id === memRef.id,
+              );
+              if (!rawMem) return;
+
+              const excludedIds: string[] = (excludedMedia && excludedMedia[rawMem.id]) || [];
+
+              const allAssets = rawMem.media_assets || [];
+              const visibleAssets = allAssets.filter((a) => !excludedIds.includes(a.id));
+
+              const photoAssets = visibleAssets.filter((a) => a.kind === "photo");
+              const audioAssets = visibleAssets.filter((a) => a.kind === "audio");
+
+              const images: MemoryImage[] = photoAssets
+                .map((a) => ({
+                  id: a.id,
+                  url: resolvePhotoUrl(a),
+                  caption: a.caption || rawMem.title || "Archive photo",
+                }))
+                .filter((i) => Boolean(i.url));
+
+              const audioClips: MemoryAudio[] = audioAssets
+                .map((a) => ({
+                  id: a.id,
+                  url: resolvePhotoUrl(a),
+                  caption: a.caption,
+                  transcript: a.transcript ?? null,
+                }))
+                .filter((a) => Boolean(a.url));
+
+              images.forEach((img) => photosExtracted.push(img));
+
+              const rawDate = rawMem.occurred_start || rawMem.created_at;
+              if (rawDate) {
+                const year = new Date(rawDate).getFullYear();
+                if (!isNaN(year)) decadeSet.add(`${Math.floor(year / 10) * 10}s`);
+              }
+
+              const formattedDate = rawMem.occurred_start
+                ? new Date(rawMem.occurred_start).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : new Date(rawMem.created_at).toLocaleDateString();
+
+              mapped.push({
+                id: rawMem.id,
+                author: "Family Member",
+                title: rawMem.title || "Memory Entry",
+                text: rawMem.body_text || "",
+                reactionsCount: 0,
+                imageUrl: images[0]?.url,
+                imageCaption: photoAssets[0]?.caption,
+                images: images.length ? images : undefined,
+                audioClips: audioClips.length ? audioClips : undefined,
+                chapter: ch.title,
+                chapterSubtitle: ch.summary,
+                date: formattedDate,
+              });
+            });
+          });
+
+          setLiveMemories(mapped);
+          if (photosExtracted.length > 0) setLivePhotos(photosExtracted);
+          if (decadeSet.size > 0) setLiveDecadesList(Array.from(decadeSet).sort());
+
+          setLoadingFeed(false);
+          return; // stop; skip live fetch in preview mode
+        } catch (err) {
+          console.error("Failed to parse preview payload:", err);
+        }
+      }
+    }
+
+    // Normal (non-preview) memoir hydration path
     try {
       const savedMemoir = localStorage.getItem("active_memoir");
       if (savedMemoir) {
@@ -97,28 +230,22 @@ export default function FinalMemoirPage() {
         if (obj.id) setMemoirId(obj.id);
         if (obj.subject_name) {
           setSubjectName(obj.subject_name);
-          setPdfFileName(`${obj.subject_name.toLowerCase().replace(/\s+/g, '-')}-story`);
+          setPdfFileName(`${obj.subject_name.toLowerCase().replace(/\s+/g, "-")}-story`);
         }
-        if (obj.description) {
-          setMemoirDescription(obj.description);
-        }
-        if (obj.subject_born_on) {
-          setDob(obj.subject_born_on.substring(0, 4));
-        }
-        if (obj.subject_died_on) {
-          setDod(obj.subject_died_on.substring(0, 4));
-        } else if (obj.subject_is_living) {
-          setDod("Present");
-        }
+        if (obj.description) setMemoirDescription(obj.description);
+        if (obj.subject_born_on) setDob(obj.subject_born_on.substring(0, 4));
+        if (obj.subject_died_on) setDod(obj.subject_died_on.substring(0, 4));
+        else if (obj.subject_is_living) setDod("Present");
       }
     } catch (err) {
       console.error("Failed to parse active memoir", err);
     }
   }, []);
 
+  // ------- Live memoir hydration from API (only when NOT in preview mode) -------
   useEffect(() => {
-    if (!memoirId) {
-      setLoadingFeed(false);
+    if (!memoirId || isPreviewMode) {
+      if (!memoirId) setLoadingFeed(false);
       return;
     }
 
@@ -126,7 +253,7 @@ export default function FinalMemoirPage() {
       try {
         setLoadingFeed(true);
         const liveData = await api.getLiveMemoir(memoirId);
-        
+
         if (liveData.memoir) {
           const m = liveData.memoir;
           if (m.subject_name) setSubjectName(m.subject_name);
@@ -155,19 +282,8 @@ export default function FinalMemoirPage() {
           const decadeSet = new Set<string>();
 
           const mapped: MemoryItem[] = memoriesData.map((record) => {
-            // Collect ALL photos attached to this memory, not just the first —
-            // a memory can legitimately have several (memory_media is many-to-many).
             const photoAssets = record.media_assets?.filter((m) => m.kind === "photo") || [];
-
-            const resolvePhotoUrl = (asset: ApiMediaAsset): string => {
-              if (asset.playback_url) return asset.playback_url;
-              if (asset.storage_key) {
-                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '') || "";
-                const cleanKey = asset.storage_key.replace(/^\/+/, "");
-                return baseUrl ? `${baseUrl}/storage/v1/object/public/memoir-media/${cleanKey}` : "";
-              }
-              return "";
-            };
+            const audioAssets = record.media_assets?.filter((m) => m.kind === "audio") || [];
 
             const images: MemoryImage[] = photoAssets
               .map((asset) => ({
@@ -177,7 +293,15 @@ export default function FinalMemoirPage() {
               }))
               .filter((img) => Boolean(img.url));
 
-            // Keep a single "first photo" too, for the hero carousel / back-compat.
+            const audioClips: MemoryAudio[] = audioAssets
+              .map((asset) => ({
+                id: asset.id,
+                url: resolvePhotoUrl(asset),
+                caption: asset.caption,
+                transcript: asset.transcript ?? null,
+              }))
+              .filter((a) => Boolean(a.url));
+
             const firstPhoto = photoAssets[0];
             const photoUrl = images[0]?.url || "";
 
@@ -193,12 +317,17 @@ export default function FinalMemoirPage() {
             }
 
             const formattedDate = record.occurred_start
-              ? new Date(record.occurred_start).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+              ? new Date(record.occurred_start).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
               : new Date(record.created_at).toLocaleDateString();
 
-            const assignedChapterInfo = record.chapter_id && chapterMap[record.chapter_id]
-              ? chapterMap[record.chapter_id]
-              : { title: "Memoir Reflections", summary: "Stories and preserved moments." };
+            const assignedChapterInfo =
+              record.chapter_id && chapterMap[record.chapter_id]
+                ? chapterMap[record.chapter_id]
+                : { title: "Memoir Reflections", summary: "Stories and preserved moments." };
 
             return {
               id: record.id,
@@ -209,6 +338,7 @@ export default function FinalMemoirPage() {
               imageUrl: photoUrl || undefined,
               imageCaption: firstPhoto?.caption,
               images: images.length > 0 ? images : undefined,
+              audioClips: audioClips.length > 0 ? audioClips : undefined,
               chapter: assignedChapterInfo.title,
               chapterSubtitle: assignedChapterInfo.summary,
               date: formattedDate,
@@ -227,7 +357,7 @@ export default function FinalMemoirPage() {
     }
 
     fetchLiveMemoirData();
-  }, [memoirId]);
+  }, [memoirId, isPreviewMode]);
 
   const activeMemories = liveMemories.length > 0 ? liveMemories : mockMemories;
   const activeHeroPhotos = livePhotos.length > 0 ? livePhotos : mockHeroPhotos;
@@ -329,12 +459,12 @@ export default function FinalMemoirPage() {
     if (!text || !text.trim()) return;
 
     if (!isValidUuid(id)) {
-      const fallbackComment: CommentItem = { 
-        id: Date.now().toString(), 
-        author: "You", 
-        text: text.trim(), 
-        time: "Just now", 
-        replies: [] 
+      const fallbackComment: CommentItem = {
+        id: Date.now().toString(),
+        author: "You",
+        text: text.trim(),
+        time: "Just now",
+        replies: [],
       };
       setCommentsMap((prev) => ({ ...prev, [id]: [...(prev[id] || []), fallbackComment] }));
       setCommentInputs((prev) => ({ ...prev, [id]: "" }));
@@ -356,9 +486,9 @@ export default function FinalMemoirPage() {
         replies: [],
       };
 
-      setCommentsMap((prev) => ({ 
-        ...prev, 
-        [id]: [...(prev[id] || []), formattedComment] 
+      setCommentsMap((prev) => ({
+        ...prev,
+        [id]: [...(prev[id] || []), formattedComment],
       }));
       setCommentInputs((prev) => ({ ...prev, [id]: "" }));
     } catch (err) {
@@ -375,16 +505,13 @@ export default function FinalMemoirPage() {
         const memoryComments = prev[memoryId] || [];
         const updated = memoryComments.map((c) => {
           if (c.id === commentId) {
-            const replyItem: ReplyItem = { 
-              id: Date.now().toString(), 
-              author: "You", 
-              text: replyText.trim(), 
-              time: "Just now" 
+            const replyItem: ReplyItem = {
+              id: Date.now().toString(),
+              author: "You",
+              text: replyText.trim(),
+              time: "Just now",
             };
-            return {
-              ...c,
-              replies: [...(c.replies || []), replyItem]
-            };
+            return { ...c, replies: [...(c.replies || []), replyItem] };
           }
           return c;
         });
@@ -411,10 +538,7 @@ export default function FinalMemoirPage() {
               text: newReply.body,
               time: new Date(newReply.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             };
-            return {
-              ...c,
-              replies: [...(c.replies || []), replyItem]
-            };
+            return { ...c, replies: [...(c.replies || []), replyItem] };
           }
           return c;
         });
@@ -440,17 +564,29 @@ export default function FinalMemoirPage() {
       (mem.author && mem.author.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (mem.imageCaption && mem.imageCaption.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (mem.title && mem.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
+
+    const matchesDecade =
+      !selectedDecade ||
+      (() => {
+        const year = new Date(mem.date).getFullYear();
+        if (isNaN(year)) return false;
+        return `${Math.floor(year / 10) * 10}s` === selectedDecade;
+      })();
+
+    return matchesSearch && matchesDecade;
   });
 
-const memoryChapterNames = Array.from(new Set(activeMemories.map((m) => m.chapter)));
-const uniqueChapters = liveChaptersList.length > 0
-  ? [...liveChaptersList, ...memoryChapterNames.filter((c) => !liveChaptersList.includes(c))]
-  : memoryChapterNames;
+  const memoryChapterNames = Array.from(new Set(activeMemories.map((m) => m.chapter)));
+  const uniqueChapters =
+    liveChaptersList.length > 0
+      ? [...liveChaptersList, ...memoryChapterNames.filter((c) => !liveChaptersList.includes(c))]
+      : memoryChapterNames;
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] font-serif text-stone-900 selection:bg-memory-maroon/20">
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .font-serif { font-family: "Times New Roman", Times, serif !important; }
         .book-text { hyphens: auto; -webkit-hyphens: auto; -ms-hyphens: auto; }
         @keyframes scribble {
@@ -464,12 +600,20 @@ const uniqueChapters = liveChaptersList.length > 0
         .cursor-blink::after { content: '|'; animation: blink 1s step-start infinite; }
         @keyframes blink { 50% { opacity: 0; } }
         .clearfix::after { content: ""; clear: both; display: table; }
-      `}} />
+      `,
+        }}
+      />
 
       <MemoirHeader isVisible={isVisible} />
 
-      <MemoirHero 
-        onOpenGallery={() => setShowScatteredView(true)} 
+      {isPreviewMode && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-amber-100 border border-amber-300 text-amber-900 text-xs font-serif italic px-4 py-2 rounded-full shadow-md">
+          Preview Mode — this proposal is not yet applied
+        </div>
+      )}
+
+      <MemoirHero
+        onOpenGallery={() => setShowScatteredView(true)}
         subjectName={subjectName}
         description={memoirDescription}
         dob={dob}
@@ -477,12 +621,12 @@ const uniqueChapters = liveChaptersList.length > 0
         heroPhotos={activeHeroPhotos}
       />
 
-      <div className="max-w-4xl mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
+      <div className="max-w-7xl mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
         <div className="w-full h-[1px] bg-stone-300"></div>
         <div className="w-full h-[1px] bg-stone-300"></div>
       </div>
 
-      <MemoirActionBar 
+      <MemoirActionBar
         pdfFileName={pdfFileName}
         setPdfFileName={setPdfFileName}
         triggerExport={triggerExport}
@@ -492,20 +636,26 @@ const uniqueChapters = liveChaptersList.length > 0
         isTyping={isTyping}
       />
 
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-12">
-        <main style={{ perspective: "2500px" }} className="flex-1 max-w-3xl">
-          <div 
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-12">
+        <main style={{ perspective: "2500px" }} className="flex-1 max-w-4xl">
+          <div
             className={`relative bg-[#FCFBF8] border border-stone-200/80 px-6 md:px-10 py-6 rounded-sm pb-16 origin-left overflow-hidden ${
-              isTurningPage 
-                ? "transition-all duration-700 ease-[cubic-bezier(0.645,0.045,0.355,1)] opacity-0 [transform:rotateY(-130deg)_rotateX(4deg)_scale(0.95)] shadow-2xl brightness-50" 
+              isTurningPage
+                ? "transition-all duration-700 ease-[cubic-bezier(0.645,0.045,0.355,1)] opacity-0 [transform:rotateY(-130deg)_rotateX(4deg)_scale(0.95)] shadow-2xl brightness-50"
                 : "transition-opacity duration-500 ease-in opacity-100 [transform:rotateY(0deg)_rotateX(0deg)_scale(1)] shadow-[0_4px_24px_rgba(0,0,0,0.04),inset_0_0_60px_rgba(90,24,39,0.02)] brightness-100"
             }`}
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E")`,
             }}
           >
-            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-black/5 via-black/0 to-transparent pointer-events-none" style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-black/5 via-transparent to-transparent pointer-events-none" style={{ clipPath: 'polygon(0 100%, 0 0, 100% 100%)' }} />
+            <div
+              className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-black/5 via-black/0 to-transparent pointer-events-none"
+              style={{ clipPath: "polygon(100% 0, 0 0, 100% 100%)" }}
+            />
+            <div
+              className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-black/5 via-transparent to-transparent pointer-events-none"
+              style={{ clipPath: "polygon(0 100%, 0 0, 100% 100%)" }}
+            />
 
             {loadingFeed ? (
               <div className="py-20 text-center text-stone-400 font-serif italic">
@@ -521,23 +671,34 @@ const uniqueChapters = liveChaptersList.length > 0
                 if (chapterMemories.length === 0) return null;
                 const chapterSub = chapterMemories[0].chapterSubtitle;
 
-                // Issue 4: Extract images to Chapter Gallery
                 const chapterImages = chapterMemories.flatMap((m) => {
                   if (m.images && m.images.length > 0) {
                     return m.images.map((img) => ({
-                    id: img.id,
-                    url: img.url,
-                    caption: img.caption || m.title || "",
-                }));
-  }
-  if (m.imageUrl) {
-    return [{ id: m.id, url: m.imageUrl, caption: m.imageCaption || m.title || "" }];
-  }
-  return [];
-});
+                      id: img.id,
+                      url: img.url,
+                      caption: img.caption || m.title || "",
+                    }));
+                  }
+                  if (m.imageUrl) {
+                    return [{ id: m.id, url: m.imageUrl, caption: m.imageCaption || m.title || "" }];
+                  }
+                  return [];
+                });
+
+                const chapterAudios = Array.from(
+                  new Map(
+                    chapterMemories
+                      .flatMap((m) => m.audioClips || [])
+                      .map((a) => [a.id, a]),
+                  ).values(),
+                );
 
                 return (
-                  <div key={`chapter-sec-${chapterName}-${chapterIdx}`} className="mb-10">
+                  <div
+                    key={`chapter-sec-${chapterName}-${chapterIdx}`}
+                    id={chapterAnchorId(chapterName)}
+                    className="mb-10 scroll-mt-28"
+                  >
                     <div className="mb-4 mt-4 text-left relative flex flex-col">
                       <div className="w-full h-[2px] bg-stone-800 mb-3"></div>
                       <h2 className="text-3xl md:text-4xl font-serif text-stone-900 mb-2 leading-tight">
@@ -550,20 +711,20 @@ const uniqueChapters = liveChaptersList.length > 0
                       )}
                     </div>
 
-                    {/* Scrollable Gallery */}
                     {chapterImages.length > 0 && (
-                      <div 
-                        className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-2 mb-8"
-                        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                      <div
+                        className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-2 pb-4 mb-8
+                                   [&::-webkit-scrollbar]:h-1.5
+                                   [&::-webkit-scrollbar-track]:bg-stone-100
+                                   [&::-webkit-scrollbar-thumb]:bg-memory-maroon/40
+                                   [&::-webkit-scrollbar-thumb]:rounded-full"
                       >
-                        <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
                         {chapterImages.map((img, idx) => (
-                          <figure 
-                            key={`ch-img-${img.id}-${idx}`} 
+                          <figure
+                            key={`ch-img-${img.id}-${idx}`}
                             className="snap-center shrink-0 w-72 md:w-80 bg-white p-2 border border-stone-200 shadow-sm"
                           >
                             <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                              {/* Using standard img tag here prevents Next.js parser crashes */}
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={img.url} alt={img.caption} className="w-full h-full object-cover" />
                             </div>
@@ -577,61 +738,90 @@ const uniqueChapters = liveChaptersList.length > 0
                       </div>
                     )}
 
+                    {chapterAudios.length > 0 && (
+                      <div className="mb-8 space-y-4">
+                        <div className="text-[10px] uppercase tracking-widest text-stone-500 font-mono font-semibold">
+                          Voice Archives
+                        </div>
+                        {chapterAudios.map((a) => (
+                          <div
+                            key={a.id}
+                            className="bg-[#f5f3ef] border border-stone-200 rounded-sm p-4 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-stone-500 font-mono mb-3">
+                              <span className="truncate pr-3 font-semibold text-stone-700">
+                                {a.caption || "Audio Recording"}
+                              </span>
+                              <span>Press Play</span>
+                            </div>
+                            <audio
+                              controls
+                              src={a.url}
+                              className="w-full h-8 opacity-80 filter contrast-125 rounded-sm"
+                            />
+
+                            {a.transcript && a.transcript.display_text && (
+                              <div className="mt-4 pt-3 border-t border-stone-200/60">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-semibold uppercase tracking-wider text-memory-maroon block">
+                                    Transcript
+                                  </span>
+                                  {a.transcript.confidence && (
+                                    <span className="text-[9px] text-stone-400 font-mono">
+                                      Confidence: {Math.round(a.transcript.confidence * 100)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="font-serif text-[14px] text-stone-800 italic leading-relaxed mt-1">
+                                  “{a.transcript.display_text}”
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {(() => {
-  // Merge every memory's text in this chapter into ONE flowing narrative,
-  // instead of one description block per memory/photo.
-  const combinedText = chapterMemories
-    .map((m) => m.text?.trim())
-    .filter(Boolean)
-    .join("\n\n");
+                      const uniqueAuthors = Array.from(
+                        new Set(chapterMemories.map((m) => m.author).filter(Boolean)),
+                      ).join(", ");
 
-  const uniqueAuthors = Array.from(
-    new Set(chapterMemories.map((m) => m.author).filter(Boolean))
-  ).join(", ");
+                      const combinedReactions = chapterMemories.reduce(
+                        (sum, m) => sum + (m.reactionsCount || 0),
+                        0,
+                      );
 
-  const combinedReactions = chapterMemories.reduce(
-    (sum, m) => sum + (m.reactionsCount || 0),
-    0
-  );
+                      const anchorId = chapterMemories[0].id;
 
-  // Anchor reactions/comments to the chapter's first memory id.
-  const anchorId = chapterMemories[0].id;
+                      const combinedMemory: MemoryItem = {
+                        id: anchorId,
+                        author: uniqueAuthors || "Family Member",
+                        title: undefined,
+                        text: "",
+                        reactionsCount: combinedReactions,
+                        chapter: chapterName,
+                        chapterSubtitle: chapterSub,
+                        date: chapterMemories[0].date,
+                      };
 
-  const combinedMemory: MemoryItem = {
-    id: anchorId,
-    author: uniqueAuthors || "Family Member",
-    title: undefined, // no repeated per-memory title label
-    text: combinedText,
-    reactionsCount: combinedReactions,
-    chapter: chapterName,
-    chapterSubtitle: chapterSub,
-    date: chapterMemories[0].date,
-    // images intentionally omitted — the chapter gallery above already shows them
-  };
-
-  return (
-    <MemoryCard
-      key={`chapter-narrative-${chapterName}-${chapterIdx}`}
-      mem={combinedMemory}
-      isHighlighted={combinedMemory.reactionsCount > 20}
-      currentReaction={
-        reactions[anchorId] || { count: combinedReactions, reacted: false }
-      }
-      handleToggleReaction={handleToggleReaction}
-      isCommentsOpen={openCommentsId === anchorId}
-      setOpenCommentsId={setOpenCommentsId}
-      commentsList={commentsMap[anchorId] || []}
-      commentInputValue={commentInputs[anchorId] || ""}
-      setCommentInputValue={(val) =>
-        setCommentInputs({ ...commentInputs, [anchorId]: val })
-      }
-      handlePostComment={handlePostComment}
-      handlePostReply={(commentId, replyText) =>
-        handlePostReply(anchorId, commentId, replyText)
-      }
-    />
-  );
-})()}
+                      return (
+                        <MemoryCard
+                          key={`chapter-narrative-${chapterName}-${chapterIdx}`}
+                          mem={combinedMemory}
+                          isHighlighted={combinedMemory.reactionsCount > 20}
+                          currentReaction={reactions[anchorId] || { count: combinedReactions, reacted: false }}
+                          handleToggleReaction={handleToggleReaction}
+                          isCommentsOpen={openCommentsId === anchorId}
+                          setOpenCommentsId={setOpenCommentsId}
+                          commentsList={commentsMap[anchorId] || []}
+                          commentInputValue={commentInputs[anchorId] || ""}
+                          setCommentInputValue={(val) => setCommentInputs({ ...commentInputs, [anchorId]: val })}
+                          handlePostComment={handlePostComment}
+                          handlePostReply={(commentId, replyText) => handlePostReply(anchorId, commentId, replyText)}
+                        />
+                      );
+                    })()}
                   </div>
                 );
               })
@@ -639,11 +829,12 @@ const uniqueChapters = liveChaptersList.length > 0
 
             {filteredMemories.length > 0 && (
               <div className="mt-16 flex flex-col items-center justify-center opacity-90 pb-8">
-                <div 
+                <div
                   className="relative w-20 h-20 bg-memory-maroon flex items-center justify-center cursor-default group"
                   style={{
-                    boxShadow: "0 4px 10px rgba(0,0,0,0.2), inset 0 -4px 8px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.2)",
-                    borderRadius: "50% 48% 52% 49% / 49% 51% 48% 52%"
+                    boxShadow:
+                      "0 4px 10px rgba(0,0,0,0.2), inset 0 -4px 8px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.2)",
+                    borderRadius: "50% 48% 52% 49% / 49% 51% 48% 52%",
                   }}
                 >
                   <div className="absolute -top-1 right-2 w-3 h-3 rounded-full bg-memory-maroon shadow-[inset_0_-1px_2px_rgba(0,0,0,0.2)]"></div>
@@ -654,7 +845,7 @@ const uniqueChapters = liveChaptersList.length > 0
                     </span>
                   </div>
                 </div>
-                
+
                 <div className="mt-8 text-center border-t border-stone-200/60 pt-6 flex flex-col items-center">
                   <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-stone-400 mb-4 font-semibold">
                     Sealed & Shared
@@ -668,20 +859,26 @@ const uniqueChapters = liveChaptersList.length > 0
           </div>
         </main>
 
-        <MemoirSidebar 
+        <MemoirSidebar
           activeView={activeView}
           setActiveView={setActiveView}
           mockShortQuotes={mockShortQuotes}
           chapters={liveChaptersList}
           decades={liveDecadesList}
+          activeDecade={selectedDecade}
+          onSelectChapter={(chapterName) => {
+            document
+              .getElementById(chapterAnchorId(chapterName))
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          onSelectDecade={(decade) => {
+            setSelectedDecade((prev) => (prev === decade ? null : decade));
+          }}
         />
       </div>
 
       {showScatteredView && (
-        <ScatteredGallery 
-          heroPhotos={activeHeroPhotos} 
-          onClose={() => setShowScatteredView(false)} 
-        />
+        <ScatteredGallery heroPhotos={activeHeroPhotos} onClose={() => setShowScatteredView(false)} />
       )}
     </div>
   );

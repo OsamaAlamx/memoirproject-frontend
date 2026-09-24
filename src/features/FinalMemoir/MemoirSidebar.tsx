@@ -7,17 +7,24 @@ interface MemoirSidebarProps {
   mockShortQuotes: ShortQuote[];
   chapters?: string[];
   decades?: string[];
+  activeDecade?: string | null;
+  onSelectChapter?: (chapter: string) => void;
+  onSelectDecade?: (decade: string) => void;
 }
 
-export default function MemoirSidebar({ 
-  activeView, 
-  setActiveView, 
+export default function MemoirSidebar({
+  activeView,
+  setActiveView,
   mockShortQuotes,
   chapters = ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"],
-  decades = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"]
+  decades = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"],
+  activeDecade = null,
+  onSelectChapter,
+  onSelectDecade,
 }: MemoirSidebarProps) {
   const displayDecades = decades.length > 0 ? decades : ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s"];
-  const displayChapters = chapters.length > 0 ? chapters : ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"];
+  const displayChapters =
+    chapters.length > 0 ? chapters : ["The girl with the open window", "The things she carried", "A room at the center", "What stays warm"];
 
   return (
     <aside className="w-full lg:w-56 shrink-0 space-y-8">
@@ -44,17 +51,30 @@ export default function MemoirSidebar({
           {activeView === "timeline" && (
             <ul className="space-y-2.5 text-[11px] font-serif">
               {displayDecades.map((decade, idx) => (
-                <li key={`decade-${decade}-${idx}`} className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100">
+                <li
+                  key={`decade-${decade}-${idx}`}
+                  onClick={() => onSelectDecade?.(decade)}
+                  className={`flex items-center justify-between cursor-pointer pb-1 border-b border-stone-100 ${
+                    activeDecade === decade ? "text-memory-maroon font-semibold" : "text-stone-600 hover:text-memory-maroon"
+                  }`}
+                >
                   <span>{decade}</span>
-                  <span className="text-[9px] font-sans uppercase tracking-wider text-stone-400">Archive</span>
+                  <span className="text-[9px] font-sans uppercase tracking-wider text-stone-400">
+                    {activeDecade === decade ? "Selected" : "Archive"}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
+
           {activeView === "chapters" && (
             <ul className="space-y-2.5 text-[11px] font-serif">
               {displayChapters.map((chapter, idx) => (
-                <li key={`chapter-${chapter}-${idx}`} className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100">
+                <li
+                  key={`chapter-${chapter}-${idx}`}
+                  onClick={() => onSelectChapter?.(chapter)}
+                  className="flex items-center justify-between text-stone-600 hover:text-memory-maroon cursor-pointer pb-1 border-b border-stone-100"
+                >
                   <span className="truncate pr-2">{chapter}</span>
                   <span className="text-[9px] font-sans text-stone-400 shrink-0">
                     {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}

@@ -1,8 +1,8 @@
 /**
  * @file signupForm.tsx
  * @description Client-side React component that renders the user registration form,
- * manages form field validation via React Hook Form and Zod, and delegates network actions 
- * and submission states to the useAuth custom hook while maintaining side-by-side 
+ * manages form field validation via React Hook Form and Zod, and delegates network actions
+ * and submission states to the useAuth custom hook while maintaining side-by-side
  * password fields, exact login styling specs, and strict accessibility attributes.
  */
 
@@ -18,18 +18,27 @@ import { useAuth } from "./hooks";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const extendedSignupSchema = signupSchema.extend({
-  confirmPassword: z.string().min(1, "Please confirm your password"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match!",
-  path: ["confirmPassword"],
-});
+const extendedSignupSchema = signupSchema
+  .extend({
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match!",
+    path: ["confirmPassword"],
+  });
 
 type ExtendedSignupInput = z.infer<typeof extendedSignupSchema>;
 
 export default function SignupForm() {
   const router = useRouter();
   const { loading, serverError, successMessage, handleSignup } = useAuth();
+
+  // If already logged in, go to dashboard
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const {
     register,
@@ -39,18 +48,12 @@ export default function SignupForm() {
     resolver: zodResolver(extendedSignupSchema),
   });
 
-  useEffect(() => {
-    if (successMessage) {
-      router.push("/dashboard");
-    }
-  }, [successMessage, router]);
-
   const onSubmit = async (data: ExtendedSignupInput) => {
     try {
-      const success = await handleSignup(data);
-      if (success) {
-        router.push("/dashboard");
-      }
+      await handleSignup(data);
+      // routing is handled inside the hook:
+      // - if token exists -> /dashboard
+      // - if confirmation required -> /login (after showing message)
     } catch (err) {
       console.error("Signup error:", err);
     }
@@ -94,13 +97,19 @@ export default function SignupForm() {
 
         {/* Server Success / Error Banners with Accessibility Role */}
         {serverError && (
-          <div role="alert" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             Signup Failed: {serverError}
           </div>
         )}
 
         {successMessage && (
-          <div role="status" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="status"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             {successMessage}
           </div>
         )}
@@ -168,7 +177,7 @@ export default function SignupForm() {
             )}
           </div>
 
-          {/* Passwords in the same line */}
+          {/* Passwords */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label
@@ -246,7 +255,6 @@ export default function SignupForm() {
           </motion.button>
         </form>
 
-        {/* Terms and Conditions Footer */}
         <p className="text-center text-sm text-memory-muted mt-8">
           By clicking continue you agree to the{" "}
           <span className="text-memory-primary font-medium cursor-pointer hover:underline underline-offset-2">

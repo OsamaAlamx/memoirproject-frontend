@@ -8,18 +8,26 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loginSchema, LoginInput } from "./schemas";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "./hooks";
+import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
+  const router = useRouter();
   const [rememberMe, setRememberMe] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const { loading, serverError, setServerError, handleLogin } = useAuth();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const {
     register,
@@ -62,22 +70,24 @@ export default function LoginForm() {
 
         {/* Server Error / Info Banners with Accessibility Role */}
         {serverError && (
-          <div role="alert" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             Login Failed: {serverError}
           </div>
         )}
 
         {infoMessage && (
-          <div role="status" className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm">
+          <div
+            role="status"
+            className="mb-6 p-4 bg-memory-card border border-memory-border text-memory-primary rounded-xl text-sm"
+          >
             {infoMessage}
           </div>
         )}
 
-        <form
-          onSubmit={handleSubmit(handleLogin)}
-          className="flex flex-col gap-4"
-          noValidate
-        >
+        <form onSubmit={handleSubmit(handleLogin)} className="flex flex-col gap-4" noValidate>
           <div>
             <label
               htmlFor="login-email"
@@ -136,17 +146,18 @@ export default function LoginForm() {
             />
 
             {errors.password && (
-              <p id="login-password-error" role="alert" className="mt-1 text-xs text-red-600 font-medium">
+              <p
+                id="login-password-error"
+                role="alert"
+                className="mt-1 text-xs text-red-600 font-medium"
+              >
                 {errors.password.message}
               </p>
             )}
           </div>
 
           <div className="flex justify-between items-center text-sm text-memory-muted py-1">
-            <label
-              htmlFor="remember-me"
-              className="flex items-center gap-2 cursor-pointer"
-            >
+            <label htmlFor="remember-me" className="flex items-center gap-2 cursor-pointer">
               <input
                 id="remember-me"
                 type="checkbox"
@@ -184,10 +195,7 @@ export default function LoginForm() {
         {/* Footer Link */}
         <div className="border border-memory-border rounded-2xl mt-8 py-4 text-center text-sm text-memory-muted bg-memory-bg">
           Not a member yet?{" "}
-          <Link
-            href="/signup"
-            className="text-memory-primary font-semibold ml-1 hover:underline underline-offset-2"
-          >
+          <Link href="/signup" className="text-memory-primary font-semibold ml-1 hover:underline underline-offset-2">
             Sign up
           </Link>
         </div>
