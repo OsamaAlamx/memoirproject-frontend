@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { setMemoirPublication, setMemoirSettings, getUserActiveMemoir } from "@/features/memoir";
 import { ensureShareLink, revokeShareLink } from "./api";
 import type { ShareLink } from "./schemas";
@@ -32,8 +32,13 @@ export default function SharePanel({
     }
   };
 
+  // StrictMode remounts effects in dev and tab switches can retrigger init:
+  // dedupe by memoir so a second mount reuses the in-flight init instead of
+  // firing a duplicate active + share-link round trip (each 1.5-4s on Render).
+  const initRef = useRef<{ memoirId: string; promise: Promise<void> } | null>(null);
+
   useEffect(() => {
-    async function init() {
+    async function run() {
       if (!memoirId) return;
       setLoading(true);
       try {
@@ -56,7 +61,15 @@ export default function SharePanel({
         setLoading(false);
       }
     }
-    init();
+    if (initRef.current?.memoirId === memoirId) {
+      initRef.current.promise.then(
+        () => setLoading(false),
+        () => setLoading(false),
+      );
+      return;
+    }
+    const promise = run();
+    initRef.current = { memoirId, promise };
   }, [memoirId]);
 
   // Sync when publishing happens outside this panel (AI Organizer's

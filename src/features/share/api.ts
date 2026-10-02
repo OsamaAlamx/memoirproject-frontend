@@ -8,6 +8,7 @@ import {
   guestCommentResponseSchema,
   reactionToggleResponseSchema,
   reactionSummaryResponseSchema,
+  type ShareLink,
 } from "./schemas";
 
 /** The only public reader route is /live/[token]; rewrite legacy /share URLs. */
@@ -16,15 +17,27 @@ export function toLiveUrl(url: string): string {
 }
 
 /** Creates the live view link, or returns the existing one (backend get-or-create). */
+const shareLinkInFlight = new Map<string, Promise<ShareLink>>();
+
 export async function ensureShareLink(memoirId: string) {
-  const body = await apiRequest(
-    `/api/memoirs/${memoirId}/share-link`,
-    { method: "POST" },
-    shareLinkResponseSchema,
-  );
-  const link = body.data;
-  const url = typeof link.url === "string" ? toLiveUrl(link.url) : link.url;
-  return { ...link, url };
+  const pending = shareLinkInFlight.get(memoirId);
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const body = await apiRequest(
+        `/api/memoirs/${memoirId}/share-link`,
+        { method: "POST" },
+        shareLinkResponseSchema,
+      );
+      const link = body.data;
+      const url = typeof link.url === "string" ? toLiveUrl(link.url) : link.url;
+      return { ...link, url };
+    } finally {
+      shareLinkInFlight.delete(memoirId);
+    }
+  })();
+  shareLinkInFlight.set(memoirId, request);
+  return request;
 }
 
 export async function revokeShareLink(memoirId: string) {
