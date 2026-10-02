@@ -701,28 +701,6 @@ export default function FinalMemoirPage() {
                 if (chapterMemories.length === 0) return null;
                 const chapterSub = chapterMemories[0].chapterSubtitle;
 
-                const chapterImages = chapterMemories.flatMap((m) => {
-                  if (m.images && m.images.length > 0) {
-                    return m.images.map((img) => ({
-                      id: img.id,
-                      url: img.url,
-                      caption: img.caption || m.title || "",
-                    }));
-                  }
-                  if (m.imageUrl) {
-                    return [{ id: m.id, url: m.imageUrl, caption: m.imageCaption || m.title || "" }];
-                  }
-                  return [];
-                });
-
-                const chapterAudios = Array.from(
-                  new Map(
-                    chapterMemories
-                      .flatMap((m) => m.audioClips || [])
-                      .map((a) => [a.id, a]),
-                  ).values(),
-                );
-
                 return (
                   <div
                     key={`chapter-sec-${chapterName}-${chapterIdx}`}
@@ -741,76 +719,58 @@ export default function FinalMemoirPage() {
                       )}
                     </div>
 
-                    {chapterImages.length > 0 && (
-                      <div
-                        className="flex overflow-x-auto gap-4 snap-x snap-mandatory py-2 pb-4 mb-8
-                                   [&::-webkit-scrollbar]:h-1.5
-                                   [&::-webkit-scrollbar-track]:bg-stone-100
-                                   [&::-webkit-scrollbar-thumb]:bg-memory-maroon/40
-                                   [&::-webkit-scrollbar-thumb]:rounded-full"
-                      >
-                        {chapterImages.map((img, idx) => (
-                          <figure
-                            key={`ch-img-${img.id}-${idx}`}
-                            className="snap-center shrink-0 w-80 md:w-96 bg-white p-2 border border-stone-200 shadow-sm"
-                          >
-                            <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={img.url} alt={img.caption} className="w-full h-full object-cover" />
-                            </div>
-                            {img.caption && (
-                              <figcaption className="pt-2 pb-1 text-[11px] font-serif italic text-stone-600 text-center truncate px-2">
-                                {img.caption}
-                              </figcaption>
-                            )}
-                          </figure>
-                        ))}
-                      </div>
-                    )}
-
-                    {chapterAudios.length > 0 && (
-                      <div className="mb-8 space-y-4">
-                        <div className="text-[10px] uppercase tracking-widest text-stone-500 font-mono font-semibold">
-                          Voice Archives
+                    {chapterMemories.map((m) => (
+                      <article key={`story-${m.id}`} className="mb-8">
+                        {m.title && (
+                          <h3 className="font-serif font-bold text-lg text-stone-900 mb-1">{m.title}</h3>
+                        )}
+                        <div className="text-[11px] font-sans uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                          {m.date} &middot; {m.author}
                         </div>
-                        {chapterAudios.map((a) => (
-                          <div
-                            key={a.id}
-                            className="bg-[#f5f3ef] border border-stone-200 rounded-sm p-4 shadow-sm"
-                          >
-                            <div className="flex items-center justify-between text-[11px] text-stone-500 font-mono mb-3">
-                              <span className="truncate pr-3 font-semibold text-stone-700">
-                                {a.caption || "Audio Recording"}
-                              </span>
-                              <span>Press Play</span>
-                            </div>
-                            <audio
-                              controls
-                              src={a.url}
-                              className="w-full h-8 opacity-80 filter contrast-125 rounded-sm"
-                            />
+                        {m.text && (
+                          <p className="book-text font-serif text-[15px] text-stone-800 leading-[1.7] whitespace-pre-line">
+                            {m.text}
+                          </p>
+                        )}
 
-                            {a.transcript && a.transcript.display_text && (
-                              <div className="mt-4 pt-3 border-t border-stone-200/60">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[9px] font-semibold uppercase tracking-wider text-memory-maroon block">
-                                    Transcript
-                                  </span>
-                                  {a.transcript.confidence && (
-                                    <span className="text-[9px] text-stone-400 font-mono">
-                                      Confidence: {Math.round(a.transcript.confidence * 100)}%
-                                    </span>
-                                  )}
+                        {m.images && m.images.length > 0 && (
+                          <div className="flex flex-wrap gap-3 mt-3">
+                            {m.images.map((img) => (
+                              <figure
+                                key={`story-img-${img.id}`}
+                                className="w-40 shrink-0 bg-white p-1.5 border border-stone-200 shadow-sm"
+                              >
+                                <div className="relative w-full aspect-square bg-stone-100 overflow-hidden">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={img.url} alt={img.caption || m.title} className="w-full h-full object-cover" />
                                 </div>
-                                <p className="font-serif text-[14px] text-stone-800 italic leading-relaxed mt-1">
-                                  “{a.transcript.display_text}”
-                                </p>
-                              </div>
-                            )}
+                                {img.caption && (
+                                  <figcaption className="pt-1 text-[10px] font-serif italic text-stone-600 text-center truncate px-1">
+                                    {img.caption}
+                                  </figcaption>
+                                )}
+                              </figure>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
+
+                        {!isPreviewMode && m.audioClips && m.audioClips.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {m.audioClips.map((a) => (
+                              <div
+                                key={a.id}
+                                className="bg-[#f5f3ef] border border-stone-200 rounded-sm px-3 py-2"
+                              >
+                                <div className="text-[10px] text-stone-500 font-mono mb-1 truncate font-semibold">
+                                  {a.caption || "Audio Recording"}
+                                </div>
+                                <audio controls src={a.url} className="w-full h-8 opacity-80" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    ))}
 
                     {(() => {
                       const uniqueAuthors = Array.from(
