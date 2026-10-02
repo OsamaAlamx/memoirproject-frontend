@@ -1,4 +1,4 @@
-import MemoryMoment from "../../../features/onboarding/MemoryMoment";
+import MemoryMoment from "@/features/onboarding/MemoryMoment";
 
 export default function Page() {
   return <MemoryMoment />;

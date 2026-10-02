@@ -2,18 +2,23 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useExportMemoir } from "@/hooks/useExportMemoir";
-import { api, CommentEntity } from "@/lib/api/client";
+import { useExportMemoir } from "@/features/export";
+import { useLiveMemoir } from "@/features/memoir";
+import { getComments, createComment } from "@/features/comments";
+import type { CommentEntity } from "@/features/comments";
 
-import MemoirHeader from "@/features/FinalMemoir/MemoirHeader";
-import MemoirHero from "@/features/FinalMemoir/MemoirHero";
-import MemoirActionBar from "@/features/FinalMemoir/MemoirActionBar";
-import MemoryCard from "@/features/FinalMemoir/MemoryCard";
-import MemoirSidebar from "@/features/FinalMemoir/MemoirSidebar";
-import ScatteredGallery from "@/features/FinalMemoir/ScatteredGallery";
-
-import { mockHeroPhotos, mockMemories, mockShortQuotes } from "@/features/FinalMemoir/mockData";
-import { MemoryItem, HeroPhoto, MemoryImage, MemoryAudio } from "@/features/FinalMemoir/types";
+import {
+  MemoirHeader,
+  MemoirHero,
+  MemoirActionBar,
+  MemoryCard,
+  ChapterTimelineSidebar,
+  ScatteredGallery,
+  mockHeroPhotos,
+  mockMemories,
+} from "@/features/FinalMemoir";
+import type { MemoryItem, HeroPhoto, MemoryImage, MemoryAudio } from "@/features/FinalMemoir";
+import { env } from "@/lib/config/env";
 
 interface ReplyItem {
   id: string;
@@ -69,9 +74,9 @@ function chapterAnchorId(name: string): string {
 function resolvePhotoUrl(asset: ApiMediaAsset): string {
   if (asset.playback_url) return asset.playback_url;
   if (asset.storage_key) {
-    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "") || "";
+    const baseUrl = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "");
     const cleanKey = asset.storage_key.replace(/^\/+/, "");
-    return baseUrl ? `${baseUrl}/storage/v1/object/public/memoir-media/${cleanKey}` : "";
+    return baseUrl ? `${baseUrl}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${cleanKey}` : "";
   }
   return "";
 }
@@ -79,7 +84,6 @@ function resolvePhotoUrl(asset: ApiMediaAsset): string {
 export default function FinalMemoirPage() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
-  const [activeView, setActiveView] = useState<"timeline" | "chapters">("timeline");
 
   const [showScatteredView, setShowScatteredView] = useState(false);
 
@@ -96,7 +100,6 @@ export default function FinalMemoirPage() {
   const [liveMemories, setLiveMemories] = useState<MemoryItem[]>([]);
   const [livePhotos, setLivePhotos] = useState<HeroPhoto[]>([]);
   const [liveChaptersList, setLiveChaptersList] = useState<string[]>([]);
-  const [liveDecadesList, setLiveDecadesList] = useState<string[]>([]);
   const [loadingFeed, setLoadingFeed] = useState<boolean>(true);
 
   const [memoirId, setMemoirId] = useState<string>("");
@@ -107,10 +110,10 @@ export default function FinalMemoirPage() {
   const [dob, setDob] = useState<string>("1947");
   const [dod, setDod] = useState<string>("2024");
 
-  const [selectedDecade, setSelectedDecade] = useState<string | null>(null);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   // ------- Initial memoir hydration (preview mode OR live data) -------
+  /* eslint-disable react-hooks/set-state-in-effect -- hydrates client-only URL/localStorage into view state on mount */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -141,7 +144,6 @@ export default function FinalMemoirPage() {
           setLiveChaptersList(chapterOrderList);
 
           const photosExtracted: HeroPhoto[] = [];
-          const decadeSet = new Set<string>();
           const mapped: MemoryItem[] = [];
 
           proposal.chapters.forEach((ch: { title: string; summary?: string; memories: { id: string }[] }) => {
@@ -176,13 +178,7 @@ export default function FinalMemoirPage() {
                 }))
                 .filter((a) => Boolean(a.url));
 
-              images.forEach((img) => photosExtracted.push(img));
-
-              const rawDate = rawMem.occurred_start || rawMem.created_at;
-              if (rawDate) {
-                const year = new Date(rawDate).getFullYear();
-                if (!isNaN(year)) decadeSet.add(`${Math.floor(year / 10) * 10}s`);
-              }
+              images.forEach((img) => photosExtracted.push({ ...img, caption: img.caption ?? "Archive photo" }));
 
               const formattedDate = rawMem.occurred_start
                 ? new Date(rawMem.occurred_start).toLocaleDateString("en-US", {
@@ -211,12 +207,12 @@ export default function FinalMemoirPage() {
 
           setLiveMemories(mapped);
           if (photosExtracted.length > 0) setLivePhotos(photosExtracted);
-          if (decadeSet.size > 0) setLiveDecadesList(Array.from(decadeSet).sort());
 
           setLoadingFeed(false);
           return; // stop; skip live fetch in preview mode
         } catch (err) {
           console.error("Failed to parse preview payload:", err);
+          setLoadingFeed(false);
         }
       }
     }
@@ -241,18 +237,38 @@ export default function FinalMemoirPage() {
       console.error("Failed to parse active memoir", err);
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  // ------- Live memoir hydration from API (only when NOT in preview mode) -------
+  // ------- Live memoir hydration (client path: hooks.ts -> api.ts -> lib/api/client.ts) -------
+  const liveQuery = useLiveMemoir(!memoirId || isPreviewMode ? null : memoirId);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- maps fetched live data into view state */
   useEffect(() => {
     if (!memoirId || isPreviewMode) {
       if (!memoirId) setLoadingFeed(false);
       return;
     }
-
-    async function fetchLiveMemoirData() {
-      try {
-        setLoadingFeed(true);
-        const liveData = await api.getLiveMemoir(memoirId);
+    if (liveQuery.error) {
+      console.error("Failed to fetch live memoir details:", liveQuery.error);
+      setLoadingFeed(false);
+      return;
+    }
+    if (liveQuery.loading || !liveQuery.liveData) {
+      setLoadingFeed(true);
+      return;
+    }
+    try {
+      const liveData = liveQuery.liveData as {
+          memoir?: {
+            subject_name?: string;
+            description?: string;
+            subject_born_on?: string;
+            subject_died_on?: string;
+            subject_is_living?: boolean;
+          };
+          memories?: ApiMemoryRecord[];
+          chapters?: ApiChapterRecord[];
+        };
 
         if (liveData.memoir) {
           const m = liveData.memoir;
@@ -279,11 +295,25 @@ export default function FinalMemoirPage() {
 
         if (Array.isArray(memoriesData) && memoriesData.length > 0) {
           const photosExtracted: HeroPhoto[] = [];
-          const decadeSet = new Set<string>();
+
+          // Soft-hide filter chosen in AI Organizer (preview uses the same).
+          // Feed memories always keep their full media; only memoir views hide these.
+          let liveExcluded: Record<string, string[]> = {};
+          try {
+            const raw = localStorage.getItem(`ai_excluded_media_${memoirId}`);
+            if (raw) liveExcluded = JSON.parse(raw) as Record<string, string[]>;
+          } catch {
+            liveExcluded = {};
+          }
 
           const mapped: MemoryItem[] = memoriesData.map((record) => {
-            const photoAssets = record.media_assets?.filter((m) => m.kind === "photo") || [];
-            const audioAssets = record.media_assets?.filter((m) => m.kind === "audio") || [];
+            const excludedIds: string[] = liveExcluded[record.id] || [];
+            const photoAssets = (record.media_assets?.filter((m) => m.kind === "photo") || []).filter(
+              (m) => !excludedIds.includes(m.id),
+            );
+            const audioAssets = (record.media_assets?.filter((m) => m.kind === "audio") || []).filter(
+              (m) => !excludedIds.includes(m.id),
+            );
 
             const images: MemoryImage[] = photoAssets
               .map((asset) => ({
@@ -305,16 +335,7 @@ export default function FinalMemoirPage() {
             const firstPhoto = photoAssets[0];
             const photoUrl = images[0]?.url || "";
 
-            images.forEach((img) => photosExtracted.push(img));
-
-            const rawDate = record.occurred_start || record.created_at;
-            if (rawDate) {
-              const year = new Date(rawDate).getFullYear();
-              if (!isNaN(year)) {
-                const decade = `${Math.floor(year / 10) * 10}s`;
-                decadeSet.add(decade);
-              }
-            }
+            images.forEach((img) => photosExtracted.push({ ...img, caption: img.caption ?? "Archive photo" }));
 
             const formattedDate = record.occurred_start
               ? new Date(record.occurred_start).toLocaleDateString("en-US", {
@@ -347,23 +368,20 @@ export default function FinalMemoirPage() {
 
           setLiveMemories(mapped);
           if (photosExtracted.length > 0) setLivePhotos(photosExtracted);
-          if (decadeSet.size > 0) setLiveDecadesList(Array.from(decadeSet).sort());
         }
-      } catch (err) {
-        console.error("Failed to fetch live memoir details:", err);
-      } finally {
         setLoadingFeed(false);
-      }
+    } catch (err) {
+      console.error("Failed to fetch live memoir details:", err);
     }
-
-    fetchLiveMemoirData();
-  }, [memoirId, isPreviewMode]);
+  }, [liveQuery.liveData, liveQuery.loading, liveQuery.error, isPreviewMode, memoirId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const activeMemories = liveMemories.length > 0 ? liveMemories : mockMemories;
   const activeHeroPhotos = livePhotos.length > 0 ? livePhotos : mockHeroPhotos;
 
   const [reactions, setReactions] = useState<Record<string, { count: number; reacted: boolean }>>({});
 
+  /* eslint-disable react-hooks/set-state-in-effect -- seeds per-memory reaction state when the feed changes */
   useEffect(() => {
     const initial: Record<string, { count: number; reacted: boolean }> = {};
     activeMemories.forEach((m) => {
@@ -371,6 +389,7 @@ export default function FinalMemoirPage() {
     });
     setReactions(initial);
   }, [activeMemories]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const { triggerExport, isExporting } = useExportMemoir(memoirId);
 
@@ -401,8 +420,10 @@ export default function FinalMemoirPage() {
       const item: CommentItem = {
         id: entity.id,
         author: entity.author_name || "Participant",
-        text: entity.body,
-        time: new Date(entity.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        text: entity.body ?? "",
+        time: entity.created_at
+          ? new Date(entity.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : "",
         replies: [],
       };
       commentMap.set(entity.id, item);
@@ -434,7 +455,7 @@ export default function FinalMemoirPage() {
     if (openCommentsId && !commentsMap[openCommentsId]) {
       if (!isValidUuid(openCommentsId)) return;
 
-      api.getComments(openCommentsId)
+      getComments(openCommentsId)
         .then((data: CommentEntity[]) => {
           const formatted = formatCommentsToTree(data);
           setCommentsMap((prev) => ({ ...prev, [openCommentsId]: formatted }));
@@ -472,7 +493,7 @@ export default function FinalMemoirPage() {
     }
 
     try {
-      const newComment = await api.createComment({
+      const newComment = await createComment({
         memoir_id: memoirId || "active-memoir-id",
         memory_id: id,
         body: text.trim(),
@@ -481,8 +502,10 @@ export default function FinalMemoirPage() {
       const formattedComment: CommentItem = {
         id: newComment.id,
         author: newComment.author_name || "You",
-        text: newComment.body,
-        time: new Date(newComment.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        text: newComment.body ?? "",
+        time: newComment.created_at
+          ? new Date(newComment.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : "Just now",
         replies: [],
       };
 
@@ -521,7 +544,7 @@ export default function FinalMemoirPage() {
     }
 
     try {
-      const newReply = await api.createComment({
+      const newReply = await createComment({
         memoir_id: memoirId || "active-memoir-id",
         memory_id: memoryId,
         parent_comment_id: commentId,
@@ -535,8 +558,10 @@ export default function FinalMemoirPage() {
             const replyItem: ReplyItem = {
               id: newReply.id,
               author: newReply.author_name || "You",
-              text: newReply.body,
-              time: new Date(newReply.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              text: newReply.body ?? "",
+              time: newReply.created_at
+                ? new Date(newReply.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "Just now",
             };
             return { ...c, replies: [...(c.replies || []), replyItem] };
           }
@@ -558,22 +583,14 @@ export default function FinalMemoirPage() {
   };
 
   const filteredMemories = activeMemories.filter((mem) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      (mem.text && mem.text.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (mem.author && mem.author.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (mem.imageCaption && mem.imageCaption.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (mem.title && mem.title.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesDecade =
-      !selectedDecade ||
-      (() => {
-        const year = new Date(mem.date).getFullYear();
-        if (isNaN(year)) return false;
-        return `${Math.floor(year / 10) * 10}s` === selectedDecade;
-      })();
-
-    return matchesSearch && matchesDecade;
+    if (searchQuery === "") return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (mem.text && mem.text.toLowerCase().includes(q)) ||
+      (mem.author && mem.author.toLowerCase().includes(q)) ||
+      (mem.imageCaption && mem.imageCaption.toLowerCase().includes(q)) ||
+      (mem.title && mem.title.toLowerCase().includes(q))
+    );
   });
 
   const memoryChapterNames = Array.from(new Set(activeMemories.map((m) => m.chapter)));
@@ -581,6 +598,22 @@ export default function FinalMemoirPage() {
     liveChaptersList.length > 0
       ? [...liveChaptersList, ...memoryChapterNames.filter((c) => !liveChaptersList.includes(c))]
       : memoryChapterNames;
+
+  // Per-chapter timeline label derived from its visible memories' years.
+  const chapterTimelines = uniqueChapters.map((chapterName) => {
+    const years = filteredMemories
+      .filter((m) => m.chapter === chapterName)
+      .map((m) => new Date(m.date).getFullYear())
+      .filter((y) => !isNaN(y));
+    let timeline = "—";
+    if (years.length > 0) {
+      const min = Math.min(...years);
+      const max = Math.max(...years);
+      timeline =
+        Math.floor(min / 10) === Math.floor(max / 10) ? `${Math.floor(min / 10) * 10}` : `${min} – ${max}`;
+    }
+    return { name: chapterName, timeline };
+  });
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] font-serif text-stone-900 selection:bg-memory-maroon/20">
@@ -621,7 +654,7 @@ export default function FinalMemoirPage() {
         heroPhotos={activeHeroPhotos}
       />
 
-      <div className="max-w-7xl mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
+      <div className="max-w-[100rem] mx-auto px-6 mb-8 flex flex-col gap-0.5 opacity-60">
         <div className="w-full h-[1px] bg-stone-300"></div>
         <div className="w-full h-[1px] bg-stone-300"></div>
       </div>
@@ -636,8 +669,8 @@ export default function FinalMemoirPage() {
         isTyping={isTyping}
       />
 
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-12">
-        <main style={{ perspective: "2500px" }} className="flex-1 max-w-4xl">
+      <div className="max-w-[100rem] mx-auto flex flex-col lg:flex-row px-6 md:px-10 py-4 gap-8 md:gap-16">
+        <main style={{ perspective: "2500px" }} className="flex-1 max-w-6xl">
           <div
             className={`relative bg-[#FCFBF8] border border-stone-200/80 px-6 md:px-10 py-6 rounded-sm pb-16 origin-left overflow-hidden ${
               isTurningPage
@@ -722,7 +755,7 @@ export default function FinalMemoirPage() {
                         {chapterImages.map((img, idx) => (
                           <figure
                             key={`ch-img-${img.id}-${idx}`}
-                            className="snap-center shrink-0 w-72 md:w-80 bg-white p-2 border border-stone-200 shadow-sm"
+                            className="snap-center shrink-0 w-80 md:w-96 bg-white p-2 border border-stone-200 shadow-sm"
                           >
                             <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -859,20 +892,12 @@ export default function FinalMemoirPage() {
           </div>
         </main>
 
-        <MemoirSidebar
-          activeView={activeView}
-          setActiveView={setActiveView}
-          mockShortQuotes={mockShortQuotes}
-          chapters={liveChaptersList}
-          decades={liveDecadesList}
-          activeDecade={selectedDecade}
+        <ChapterTimelineSidebar
+          chapters={chapterTimelines}
           onSelectChapter={(chapterName) => {
             document
               .getElementById(chapterAnchorId(chapterName))
               ?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-          onSelectDecade={(decade) => {
-            setSelectedDecade((prev) => (prev === decade ? null : decade));
           }}
         />
       </div>

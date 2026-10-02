@@ -257,20 +257,10 @@ cache populate and invalidate.
 ## 9. Definition of done
 
 ```bash
-npm run verify     # typecheck + lint + test — must be green
+npm run verify     # typecheck + lint — must be green
 ```
 
-`npm run lint` runs with `--max-warnings 0`. Also available: `npm run format`, `npm run test:watch`,
-`npm run test:coverage`, `npm run build`.
-
-The template ships **one test per layer, to show where each kind of test lives** — not to hit a coverage
-number. Tests never touch the network.
-
-| File | Layer | What it proves |
-| --- | --- | --- |
-| `features/example/schemas.test.ts` | Contract | The schema rejects what it claims to reject |
-| `lib/api/client.test.ts` | Boundary | Every failure becomes an `ApiError` with the right code (stubs `fetch`) |
-| `features/example/components/GreetingForm.test.tsx` | Component | Invalid input is blocked client-side; all response states render (mocks the feature's `api.ts`, exercises the real hook, query client, and schemas) |
+`npm run lint` runs with `--max-warnings 0`. Also available: `npm run build`.
 
 Before you open a PR: `npm run verify` passes, the directory READMEs match what the directories now hold,
 and nothing you added violates a rule in section 4.

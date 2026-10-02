@@ -20,33 +20,10 @@ export default function MemoirActionBar({
   isTyping,
 }: MemoirActionBarProps) {
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-10 pt-2 pb-2 flex flex-col lg:flex-row justify-between items-end gap-6 relative z-10">
-      {/* LEFT: Compact PDF Export Trigger */}
-      <div className="flex items-center gap-4 bg-white/70 backdrop-blur-sm px-4 py-2.5 border border-stone-200 shadow-sm rounded-sm mb-1 w-full lg:w-auto">
-        <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-600 font-semibold">
-          Printable Archive
-        </span>
-        <div className="h-4 w-px bg-stone-300"></div>
-        <input
-          type="text"
-          value={pdfFileName}
-          onChange={(e) => setPdfFileName(e.target.value)}
-          placeholder="Filename"
-          className="w-32 sm:w-40 bg-transparent border-none px-1 text-[13px] font-serif text-stone-800 placeholder-stone-400 outline-none focus:ring-0"
-        />
-        <button
-          type="button"
-          onClick={() => triggerExport(pdfFileName)}
-          disabled={isExporting}
-          className="bg-memory-maroon text-white px-3 py-1.5 rounded-sm text-[10px] font-sans font-medium uppercase tracking-wider hover:bg-stone-800 transition shadow-sm cursor-pointer disabled:opacity-50"
-        >
-          {isExporting ? "Exporting..." : "Download"}
-        </button>
-      </div>
-
-      {/* RIGHT: Vintage Paper Scrap Semantic Search Box */}
+    <div className="max-w-[100rem] mx-auto px-6 md:px-10 pt-2 pb-2 flex flex-col items-start gap-6 relative z-10">
+      {/* TOP: Vintage Paper Scrap Semantic Search Box */}
       <div
-        className="relative p-4 shadow-[1px_2px_8px_rgba(0,0,0,0.08)] bg-white border-2 border-[#EAE3D9] w-full lg:w-80"
+        className="relative p-4 shadow-[1px_2px_8px_rgba(0,0,0,0.08)] bg-white border-2 border-[#EAE3D9] w-full lg:max-w-2xl"
         style={{
           borderRadius: "2px 20px 4px 15px / 15px 4px 20px 3px",
           backgroundImage: `url("data:image/svg+xml,%3 viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3C%3 width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E")`,
@@ -79,6 +56,29 @@ export default function MemoirActionBar({
             style={{ paddingRight: "30px" }}
           />
         </div>
+      </div>
+
+      {/* BOTTOM: Compact PDF Export Trigger */}
+      <div className="flex items-center gap-4 bg-white/70 backdrop-blur-sm px-4 py-2.5 border border-stone-200 shadow-sm rounded-sm mb-1 w-full lg:w-auto">
+        <span className="text-[10px] font-sans uppercase tracking-[0.1em] text-stone-600 font-semibold">
+          Printable Archive
+        </span>
+        <div className="h-4 w-px bg-stone-300"></div>
+        <input
+          type="text"
+          value={pdfFileName}
+          onChange={(e) => setPdfFileName(e.target.value)}
+          placeholder="Filename"
+          className="w-32 sm:w-40 bg-transparent border-none px-1 text-[13px] font-serif text-stone-800 placeholder-stone-400 outline-none focus:ring-0"
+        />
+        <button
+          type="button"
+          onClick={() => triggerExport(pdfFileName)}
+          disabled={isExporting}
+          className="bg-memory-maroon text-white px-3 py-1.5 rounded-sm text-[10px] font-sans font-medium uppercase tracking-wider hover:bg-stone-800 transition shadow-sm cursor-pointer disabled:opacity-50"
+        >
+          {isExporting ? "Exporting..." : "Download"}
+        </button>
       </div>
     </div>
   );

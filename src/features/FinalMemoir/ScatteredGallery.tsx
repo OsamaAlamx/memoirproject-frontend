@@ -46,7 +46,7 @@ export default function ScatteredGallery({ heroPhotos, onClose }: ScatteredGalle
             >
               <figure className="w-48 md:w-64 bg-white p-2.5 shadow-xl border border-stone-200">
                 <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
-                  <Image src={photo.url} alt={photo.caption || "Archive photo"} fill className="object-cover" />
+                  <Image src={photo.url} alt={photo.caption || "Archive photo"} fill sizes="(max-width: 768px) 192px, 256px" className="object-cover" />
                 </div>
                 {photo.caption && (
                   <figcaption className="pt-2.5 pb-1 text-[10px] md:text-[11px] font-serif italic text-stone-600 text-center leading-tight">

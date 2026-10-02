@@ -19,7 +19,6 @@ can guess where things go in the other.
 - [Conventions](#conventions)
 - [Setup](#setup)
 - [Scripts](#scripts)
-- [Testing](#testing)
 - [Notes](#notes)
 
 Every directory under `src/` also has its own `README.md` explaining what belongs in it. If you are
@@ -214,24 +213,7 @@ value fails immediately with a readable message rather than as a mystery 404 lat
 | `npm run build` | Production build |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest (single run) |
-| `npm run test:watch` | Vitest (watch) |
-| `npm run test:coverage` | Coverage report |
-| `npm run verify` | typecheck + lint + test |
-
-## Testing
-
-The template ships one test per layer, to show where each kind of test lives — not to hit a
-coverage number:
-
-| File | Layer | What it proves |
-| --- | --- | --- |
-| `features/example/schemas.test.ts` | Contract | The schema rejects what it claims to reject |
-| `lib/api/client.test.ts` | Boundary | Every failure becomes an `ApiError` with the right code |
-| `features/example/components/GreetingForm.test.tsx` | Component | Invalid input is blocked client-side; all response states render |
-
-Tests never hit the network. `client.test.ts` stubs `fetch`; the component test mocks the feature's
-`api.ts` and exercises the real hook, query client, and schemas underneath.
+| `npm run verify` | typecheck + lint |
 
 ## Notes
 

@@ -2,47 +2,44 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api, ChapterProposalPayload } from "@/lib/api/client";
+import { proposeChapters, refineChapters, applyChapters } from "@/features/chapters";
+import type { ChapterProposalPayload } from "@/features/chapters";
+import { uploadAndRegisterMedia } from "@/features/media";
+import { getMemoirFeed, updateMemory } from "@/features/memories";
+import type { MemoryFeedItem, MediaAsset } from "@/features/memories";
+import { setMemoirPublication, getUserActiveMemoir } from "@/features/memoir";
+import { ensureShareLink } from "@/features/share";
+import { isUnauthorizedError } from "@/lib/api/errors";
+import { env } from "@/lib/config/env";
 
-interface FeedMediaAsset {
-  id: string;
-  kind: string;
-  playback_url?: string;
-  storage_key?: string;
-  caption?: string;
-  transcript?: {
-    display_text?: string;
-    raw_text?: string;
-    confidence?: number;
-    language?: string;
-  } | null;
-}
-
-interface FeedMemory {
-  id: string;
-  title?: string;
-  body_text?: string;
-  occurred_start?: string;
-  created_at?: string;
-  media_assets?: FeedMediaAsset[];
-}
+type FeedMemory = MemoryFeedItem;
+type FeedMediaAsset = MediaAsset;
 
 function resolveAssetUrl(asset?: FeedMediaAsset): string {
   if (!asset) return "";
   if (asset.playback_url) return asset.playback_url;
   if (asset.storage_key) {
-    const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "") || "";
+    const base = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "");
     const clean = asset.storage_key.replace(/^\/+/, "");
-    return base ? `${base}/storage/v1/object/public/memoir-media/${clean}` : "";
+    return base ? `${base}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${clean}` : "";
   }
   return "";
 }
 
-export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
+export function ChapterOrganizer({
+  memoirId,
+  isPublished = false,
+  onPublished,
+}: {
+  memoirId: string;
+  isPublished?: boolean;
+  onPublished?: () => void;
+}) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<ChapterProposalPayload | null>(null);
   const [feed, setFeed] = useState<FeedMemory[]>([]);
   const [guidanceInput, setGuidanceInput] = useState("");
@@ -54,6 +51,7 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
   const [excludedMedia, setExcludedMedia] = useState<Record<string, string[]>>({});
 
   // Hydrate proposal draft + excluded media + feed
+  /* eslint-disable react-hooks/set-state-in-effect -- hydrates localStorage draft and fetched feed into view state */
   useEffect(() => {
     if (!memoirId) return;
 
@@ -75,11 +73,18 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
       }
     }
 
-    api
-      .getMemoirFeed(memoirId)
-      .then((data) => setFeed(Array.isArray(data) ? data : []))
-      .catch((err) => console.error("Feed load failed:", err));
-  }, [memoirId]);
+    getMemoirFeed(memoirId)
+      .then((data) => setFeed(data))
+      .catch((err) => {
+        // Stale JWT: apiRequest already cleared storage; send user back to login.
+        if (isUnauthorizedError(err)) {
+          router.replace("/login?expired=1");
+          return;
+        }
+        console.error("Feed load failed:", err);
+      });
+  }, [memoirId, router]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveDraft = (data: ChapterProposalPayload) => {
     setProposal(data);
@@ -93,12 +98,16 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
 
   const runPipeline = async (guidance?: string) => {
     if (!memoirId) return;
+    if (isPublished) {
+      alert("This memoir is published and can no longer be reorganized.");
+      return;
+    }
     setLoading(true);
     try {
-      const base = await api.proposeChapters(memoirId);
+      const base = await proposeChapters(memoirId);
       const refined =
         guidance && guidance.trim()
-          ? await api.refineChapters(memoirId, base, guidance.trim())
+          ? await refineChapters(memoirId, base, guidance.trim())
           : base;
       saveDraft(refined);
     } catch (err: unknown) {
@@ -113,9 +122,13 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
 
   const handleRefine = async () => {
     if (!memoirId || !proposal || !chatInput.trim()) return;
+    if (isPublished) {
+      alert("This memoir is published and can no longer be reorganized.");
+      return;
+    }
     setIsRefining(true);
     try {
-      const data = await api.refineChapters(memoirId, proposal, chatInput.trim());
+      const data = await refineChapters(memoirId, proposal, chatInput.trim());
       saveDraft(data);
       setChatInput("");
     } catch (err: unknown) {
@@ -129,18 +142,55 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
 
   const handleApply = async () => {
     if (!memoirId || !proposal) return;
-    setSaving(true);
+    // Double-guard: a published memoir is frozen (backend also 403s).
     try {
-      await api.applyChapters(memoirId, proposal);
-      alert("Chapter layout and narrative successfully applied!");
+      const active = await getUserActiveMemoir();
+      if (active && active.id === memoirId && active.status === "published") {
+        alert("This memoir is already published and can no longer be reorganized.");
+        onPublished?.();
+        return;
+      }
+    } catch {
+      // Fall through to the apply attempt; backend enforces the lock.
+    }
+    setSaving(true);
+    setPublishError(null);
+    try {
+      await applyChapters(memoirId, proposal);
+      await setMemoirPublication(memoirId, true);
+      const link = await ensureShareLink(memoirId);
+      try {
+        const raw = localStorage.getItem("active_memoir");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            if (parsed.data && typeof parsed.data === "object") {
+              parsed.data = { ...parsed.data, status: "published" };
+            } else {
+              parsed.status = "published";
+            }
+            localStorage.setItem("active_memoir", JSON.stringify(parsed));
+          }
+        }
+      } catch {
+        // Snapshot refresh is best-effort; dashboard rehydrates from backend.
+      }
+      alert(`Memoir published! Your live link is ready:\n${link.url}`);
       localStorage.removeItem(`ai_chapter_draft_${memoirId}`);
-      localStorage.removeItem(`ai_excluded_media_${memoirId}`);
+      // Keep ai_excluded_media_<memoirId>: the live final memoir filters it,
+      // while feed memories always keep their full media.
       localStorage.removeItem(`memoir_preview_${memoirId}`);
       setProposal(null);
-      setExcludedMedia({});
+      onPublished?.();
     } catch (err: unknown) {
-      console.error("Chapter apply error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to save chapters.";
+      console.error("Publish memoir error:", err);
+      const msg =
+        err instanceof Error ? err.message : "Failed to publish memoir. Please try again.";
+      if (isUnauthorizedError(err)) {
+        router.replace("/login?expired=1");
+        return;
+      }
+      setPublishError(msg);
       alert(msg);
     } finally {
       setSaving(false);
@@ -159,36 +209,48 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
 
   const handleRename = (idx: number, newTitle: string) => {
     if (!proposal) return;
-    const updated = { ...proposal };
-    updated.chapters[idx].title = newTitle;
-    saveDraft(updated);
+    const chapter = proposal.chapters[idx];
+    if (!chapter) return;
+    const updated = { ...proposal, chapters: [...proposal.chapters] };
+    updated.chapters[idx] = { ...chapter, title: newTitle };
+    saveDraft(updated as ChapterProposalPayload);
   };
 
   const handleEditSummary = (idx: number, newSummary: string) => {
     if (!proposal) return;
-    const updated = { ...proposal };
-    updated.chapters[idx].summary = newSummary;
-    saveDraft(updated);
+    const chapter = proposal.chapters[idx];
+    if (!chapter) return;
+    const updated = { ...proposal, chapters: [...proposal.chapters] };
+    updated.chapters[idx] = { ...chapter, summary: newSummary };
+    saveDraft(updated as ChapterProposalPayload);
   };
 
   const removeMemoryFromChapter = (cIdx: number, mIdx: number) => {
     if (!proposal) return;
-    const updated = { ...proposal };
-    updated.chapters[cIdx].memories.splice(mIdx, 1);
-    saveDraft(updated);
+    const chapter = proposal.chapters[cIdx];
+    if (!chapter) return;
+    const updated = { ...proposal, chapters: [...proposal.chapters] };
+    const nextChapter = { ...chapter, memories: [...chapter.memories] };
+    nextChapter.memories.splice(mIdx, 1);
+    updated.chapters[cIdx] = nextChapter;
+    saveDraft(updated as ChapterProposalPayload);
   };
 
   const addMemoryToChapter = (cIdx: number, memoryId: string) => {
     if (!proposal || !memoryId) return;
+    const chapter = proposal.chapters[cIdx];
+    if (!chapter) return;
     const mem = feed.find((f) => f.id === memoryId);
     if (!mem) return;
-    const updated = { ...proposal };
-    updated.chapters[cIdx].memories.push({
+    const updated = { ...proposal, chapters: [...proposal.chapters] };
+    const nextChapter = { ...chapter, memories: [...chapter.memories] };
+    nextChapter.memories.push({
       id: mem.id,
       title: mem.title || "Untitled Entry",
       date: mem.occurred_start || null,
     });
-    saveDraft(updated);
+    updated.chapters[cIdx] = nextChapter;
+    saveDraft(updated as ChapterProposalPayload);
   };
 
   const toggleMediaExclusion = (memoryId: string, assetId: string) => {
@@ -204,56 +266,37 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
     saveExcluded(updated);
   };
 
+  const restoreExcludedMedia = (memoryId: string) => {
+    const updated = { ...excludedMedia };
+    delete updated[memoryId];
+    saveExcluded(updated);
+  };
+
   const handleUploadNewMedia = async (
     memoryId: string,
     file: File,
     kind: "photo" | "audio",
   ) => {
-    // Capture file fields immediately (do not rely on input element later)
-    const filename =
-      file.name || (kind === "photo" ? `photo_${Date.now()}.jpg` : `audio_${Date.now()}.webm`);
+    // Capture file fields immediately (do not rely on input element later).
+    // Static fallback: the backend assigns a unique UUID storage key regardless.
+    const filename = file.name || (kind === "photo" ? "photo_upload.jpg" : "audio_upload.webm");
     const mimeType = file.type || (kind === "photo" ? "image/jpeg" : "audio/webm");
 
     setUploadingToMem(memoryId);
     try {
-      const presignRes = await api.getPresignedUrl({
-        memoir_id: memoirId,
+      const mediaId = await uploadAndRegisterMedia({
+        memoirId,
+        file,
+        kind,
         filename,
-        file_type: mimeType,
-        kind,
-      });
-      const uploadUrl = presignRes.upload_url || presignRes.signed_url || presignRes.url;
-      const storageKey = presignRes.storage_key || presignRes.path;
-
-      if (!uploadUrl || !storageKey) {
-        throw new Error("Failed to get upload URL.");
-      }
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": mimeType },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error("Upload failed");
-
-      const metaRes = await api.registerMediaMetadata({
-        memoir_id: memoirId,
-        storage_key: storageKey,
-        kind,
-        mime_type: mimeType,
-        byte_size: file.size,
-        original_filename: filename,
-        duration_ms: kind === "audio" ? 5000 : null,
+        mimeType,
+        durationMs: kind === "audio" ? 5000 : null,
       });
 
-      if (!metaRes?.id) {
-        throw new Error("Failed to register media.");
-      }
-
-      await api.updateMemory(memoryId, { media_asset_ids_to_add: [metaRes.id] });
+      await updateMemory(memoryId, { media_asset_ids_to_add: [mediaId] });
 
       // Refresh feed so new media shows up instantly
-      const updatedFeed = await api.getMemoirFeed(memoirId);
+      const updatedFeed = await getMemoirFeed(memoirId);
       setFeed(Array.isArray(updatedFeed) ? updatedFeed : []);
     } catch (err) {
       console.error(err);
@@ -271,6 +314,21 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
     );
     router.push(`/final-memoir?preview=${memoirId}`);
   };
+
+  if (isPublished) {
+    return (
+      <div className="bg-white rounded-2xl border border-memory-maroon/20 p-10 text-center shadow-xs">
+        <div className="w-12 h-12 bg-memory-light text-memory-accent border border-memory-accent rounded-full flex items-center justify-center mx-auto mb-4 font-serif text-xl">
+          📖
+        </div>
+        <h3 className="font-serif text-xl text-memory-primary mb-3">Memoir Published</h3>
+        <p className="text-sm text-memory-muted max-w-md mx-auto">
+          This memoir is live on its single share link. Organizing is locked to keep the
+          published book stable — unpublish it from the Share tab to reorganize chapters again.
+        </p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -351,10 +409,16 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
 
   return (
     <div className="space-y-6">
+      {publishError && (
+        <div className="p-3 bg-red-100 text-red-700 text-sm rounded-xl border border-red-200">{publishError}</div>
+      )}
       <div className="flex justify-between items-center bg-memory-card p-4 rounded-xl border border-memory-border shadow-2xs">
         <div>
           <h3 className="font-serif text-lg font-bold text-memory-primary">Proposed Narrative Layout</h3>
-          <p className="text-xs text-memory-muted">Review, chat with the AI to tweak, or edit manually.</p>
+          <p className="text-xs text-memory-muted">
+            Review, chat with the AI to tweak, or edit manually. Publishing applies the layout,
+            goes live, and locks further edits.
+          </p>
         </div>
         <div className="flex gap-3">
           <button
@@ -372,9 +436,9 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
           <button
             onClick={handleApply}
             disabled={saving || isRefining}
-            className="bg-memory-maroon text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-memory-primary shadow-sm transition cursor-pointer"
+            className="bg-memory-maroon text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-memory-primary shadow-sm transition cursor-pointer disabled:opacity-50"
           >
-            {saving ? "Applying..." : "Accept & Apply"}
+            {saving ? "Publishing..." : "Publish Memoir"}
           </button>
         </div>
       </div>
@@ -446,61 +510,60 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
                           </button>
                         </div>
 
-                        {/* Media strip */}
+                        {/* Media strip — removed items vanish; restore via undo below */}
                         <div className="flex flex-wrap gap-2 mt-1 pt-2 border-t border-stone-100">
-                          {photoAssets.map((p) => {
-                            const isExcluded = excludedForThis.includes(p.id);
-                            const url = resolveAssetUrl(p);
-                            if (!url) return null;
-                            return (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => toggleMediaExclusion(mem.id, p.id)}
-                                className={`relative w-10 h-10 rounded overflow-hidden border cursor-pointer transition ${
-                                  isExcluded
-                                    ? "border-red-300 opacity-40"
-                                    : "border-memory-border hover:border-memory-accent"
-                                }`}
-                                title={
-                                  isExcluded
-                                    ? "Excluded from memoir. Click to include."
-                                    : "Included. Click to exclude."
-                                }
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={url} alt="thumb" className="w-full h-full object-cover" />
-                                {isExcluded && (
-                                  <div className="absolute inset-0 bg-white/30 flex items-center justify-center text-red-500 text-xs font-bold">
-                                    ×
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          })}
+                          {photoAssets
+                            .filter((p) => !excludedForThis.includes(p.id))
+                            .map((p) => {
+                              const url = resolveAssetUrl(p);
+                              if (!url) return null;
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => toggleMediaExclusion(mem.id, p.id)}
+                                  className="relative w-10 h-10 rounded overflow-hidden border border-memory-border hover:border-memory-accent cursor-pointer transition"
+                                  title="Remove from memoir (kept in story feed)"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={url} alt="thumb" className="w-full h-full object-cover" />
+                                </button>
+                              );
+                            })}
 
-                          {audioAssets.map((a) => {
-                            const isExcluded = excludedForThis.includes(a.id);
-                            return (
-                              <button
-                                key={a.id}
-                                type="button"
-                                onClick={() => toggleMediaExclusion(mem.id, a.id)}
-                                className={`text-[10px] px-2 py-1 rounded border cursor-pointer transition h-10 ${
-                                  isExcluded
-                                    ? "bg-red-50 border-red-200 text-red-500 opacity-70"
-                                    : "bg-amber-50 border-amber-200 text-amber-800 hover:border-memory-accent"
-                                }`}
-                                title={
-                                  isExcluded
-                                    ? "Audio excluded. Click to include."
-                                    : "Audio included. Click to exclude."
-                                }
-                              >
-                                {isExcluded ? "🚫 Audio" : "🎙️ Audio"}
-                              </button>
-                            );
-                          })}
+                          {audioAssets
+                            .filter((a) => !excludedForThis.includes(a.id))
+                            .map((a) => {
+                              const url = resolveAssetUrl(a);
+                              return (
+                                <div
+                                  key={a.id}
+                                  className="w-full rounded border bg-amber-50/60 border-amber-200/70 px-2 py-1.5"
+                                  title={a.caption || "Audio recording"}
+                                >
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className="text-[10px] font-medium text-amber-800 truncate">
+                                      🎙️ {a.caption || "Audio recording"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleMediaExclusion(mem.id, a.id)}
+                                      className="text-[11px] font-bold text-amber-700/60 hover:text-red-600 cursor-pointer leading-none px-1"
+                                      title="Remove from memoir (kept in story feed)"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                  {url ? (
+                                    <audio controls src={url} className="w-full h-7 opacity-90" />
+                                  ) : (
+                                    <p className="text-[10px] text-amber-700/70 italic">
+                                      Audio URL unavailable.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
 
                           {/* Add photo */}
                           <label
@@ -548,6 +611,16 @@ export function ChapterOrganizer({ memoirId }: { memoirId: string }) {
                             />
                           </label>
                         </div>
+
+                        {excludedForThis.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => restoreExcludedMedia(mem.id)}
+                            className="text-[11px] text-memory-muted hover:text-memory-primary underline underline-offset-2 cursor-pointer self-start"
+                          >
+                            {excludedForThis.length} hidden from memoir — undo
+                          </button>
+                        )}
 
                         <span className="text-[9px] text-memory-muted font-mono mt-auto pt-1">
                           {mem.date || "Undated"}

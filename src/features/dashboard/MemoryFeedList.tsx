@@ -7,32 +7,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api/client";
+import { useRouter } from "next/navigation";
+import { getMemoirFeed, deleteMemory, updateMemory } from "@/features/memories";
+import { memoryUpdateSchema } from "@/features/memories";
+import type { MemoryFeedItem, MediaAsset } from "@/features/memories";
+import { isUnauthorizedError } from "@/lib/api/errors";
+import { env } from "@/lib/config/env";
+import { uploadAndRegisterMedia } from "@/features/media";
 
-interface MediaAsset {
-  id: string;
-  kind: "photo" | "audio" | "video" | "document";
-  storage_key?: string;
-  playback_url?: string;
-  caption?: string;
-  transcript?: {
-    display_text?: string;
-    raw_text?: string;
-    confidence?: number;
-    language?: string;
-  } | null;
-}
-
-interface MemoryRecord {
-  id: string;
-  title?: string;
-  body_text?: string;
-  text?: string;
-  occurred_start?: string;
-  created_at: string;
-  media_assets?: MediaAsset[];
-  memory_media?: Array<{ media_asset?: MediaAsset }>;
-}
+// Legacy client-only field, kept alongside the derived feed item type.
+type MemoryRecord = MemoryFeedItem & { text?: string };
 
 /**
  * Safely resolves media URLs to prevent Next.js image parser crashes.
@@ -59,11 +43,11 @@ function resolveMediaUrl(asset?: MediaAsset): string | null {
       return asset.storage_key;
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
     if (supabaseUrl) {
       const cleanBase = supabaseUrl.replace(/\/+$/, "");
       const cleanKey = asset.storage_key.replace(/^\/+/, "");
-      return `${cleanBase}/storage/v1/object/public/memoir-media/${cleanKey}`;
+      return `${cleanBase}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${cleanKey}`;
     }
   }
 
@@ -72,15 +56,19 @@ function resolveMediaUrl(asset?: MediaAsset): string | null {
 
 export default function MemoryFeedList({
   memoirId,
+  isPublished = false,
   onCountChange,
 }: {
   memoirId: string;
+  isPublished?: boolean;
   onCountChange?: (count: number) => void;
 }) {
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const router = useRouter();
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -99,27 +87,41 @@ export default function MemoryFeedList({
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getMemoirFeed(memoirId);
-      const list = Array.isArray(data) ? data : [];
+      setSessionExpired(false);
+      const list = await getMemoirFeed(memoirId);
       setMemories(list);
       onCountChange?.(list.length);
     } catch (err) {
+      // Stale JWT: apiRequest already cleared storage; stop the retry loop.
+      if (isUnauthorizedError(err)) {
+        setSessionExpired(true);
+        setError("Your session has expired. Redirecting to login…");
+        setTimeout(() => router.replace("/login?expired=1"), 1200);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load feed.");
     } finally {
       setLoading(false);
     }
-  }, [memoirId, onCountChange]);
+  }, [memoirId, onCountChange, router]);
 
+  // Fetch feed when the target memoir changes (server state -> view state).
+  /* eslint-disable react-hooks/set-state-in-effect -- loadFeed syncs fetched server data into view state */
   useEffect(() => {
     if (memoirId) loadFeed();
   }, [loadFeed, memoirId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleDelete = async (memoryId: string) => {
+    if (isPublished) {
+      alert("This memoir is published and memories can no longer be deleted.");
+      return;
+    }
     const ok = window.confirm("Delete this memory? This cannot be undone.");
     if (!ok) return;
 
     try {
-      await api.deleteMemory(memoryId);
+      await deleteMemory(memoryId);
       const next = memories.filter((m) => m.id !== memoryId);
       setMemories(next);
       onCountChange?.(next.length);
@@ -129,6 +131,10 @@ export default function MemoryFeedList({
   };
 
   const startEdit = (mem: MemoryRecord) => {
+    if (isPublished) {
+      alert("This memoir is published and can no longer be edited.");
+      return;
+    }
     setEditingId(mem.id);
     setEditData({
       title: mem.title || "",
@@ -151,44 +157,29 @@ export default function MemoryFeedList({
     const filename = file.name || (kind === "photo" ? `photo_${Date.now()}.jpg` : `audio_${Date.now()}.webm`);
     const mimeType = file.type || (kind === "photo" ? "image/jpeg" : "audio/webm");
 
-    const presignRes = await api.getPresignedUrl({
-      memoir_id: memoirId,
+    return uploadAndRegisterMedia({
+      memoirId,
+      file,
+      kind,
       filename,
-      file_type: mimeType,
-      kind,
+      mimeType,
+      durationMs: kind === "audio" ? 5000 : null,
     });
-    const uploadUrl = presignRes.upload_url || presignRes.signed_url || presignRes.url;
-    const storageKey = presignRes.storage_key || presignRes.path;
-
-    if (!uploadUrl || !storageKey) {
-      throw new Error("Failed to get upload URL for media.");
-    }
-
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": mimeType },
-      body: file,
-    });
-    if (!uploadRes.ok) throw new Error("Media upload failed");
-
-    const metaRes = await api.registerMediaMetadata({
-      memoir_id: memoirId,
-      storage_key: storageKey,
-      kind,
-      mime_type: mimeType,
-      byte_size: file.size,
-      original_filename: filename,
-      duration_ms: kind === "audio" ? 5000 : null,
-    });
-
-    if (!metaRes?.id) {
-      throw new Error("Failed to register media metadata.");
-    }
-    return metaRes.id as string;
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
+    // Validate text fields against the feature schema BEFORE uploading media,
+    // so a too-long title/body fails fast instead of after the uploads.
+    const textCheck = memoryUpdateSchema.safeParse({
+      title: editData.title,
+      body_text: editData.body_text,
+      occurred_start: editData.occurred_start || null,
+    });
+    if (!textCheck.success) {
+      alert(textCheck.error.issues[0]?.message ?? "Invalid memory details.");
+      return;
+    }
     setSavingEdit(true);
     try {
       const addedIds: string[] = [];
@@ -207,7 +198,7 @@ export default function MemoryFeedList({
         media_asset_ids_to_add: addedIds,
       };
 
-      await api.updateMemory(editingId, payload);
+      await updateMemory(editingId, payload);
       await loadFeed(); // Reload everything to grab the new media objects/urls naturally
       cancelEdit();
     } catch (err) {
@@ -232,12 +223,14 @@ export default function MemoryFeedList({
     return (
       <div className="p-4 bg-red-50 text-red-700 rounded-xl text-xs text-center border border-red-100 flex flex-col items-center justify-center space-y-3">
         <p>{error}</p>
-        <button
-          onClick={loadFeed}
-          className="px-4 py-1.5 bg-red-100 border border-red-200 rounded-lg hover:bg-red-200 font-semibold cursor-pointer shadow-xs transition-colors"
-        >
-          Retry Connection
-        </button>
+        {!sessionExpired && (
+          <button
+            onClick={loadFeed}
+            className="px-4 py-1.5 bg-red-100 border border-red-200 rounded-lg hover:bg-red-200 font-semibold cursor-pointer shadow-xs transition-colors"
+          >
+            Retry Connection
+          </button>
+        )}
       </div>
     );
   }
@@ -255,6 +248,11 @@ export default function MemoryFeedList({
 
   return (
     <div className="space-y-8 w-full max-w-4xl mx-auto">
+      {isPublished && (
+        <div className="rounded-2xl border border-memory-maroon/20 bg-white p-4 text-center text-xs text-memory-muted">
+          Published — this archive is read-only. Unpublish it from the Share tab to edit or delete entries.
+        </div>
+      )}
       {memories.map((memory) => {
         const mediaItems =
           memory.media_assets ||
@@ -275,7 +273,9 @@ export default function MemoryFeedList({
               month: "short",
               day: "numeric",
             })
-          : new Date(memory.created_at).toLocaleDateString();
+          : memory.created_at
+            ? new Date(memory.created_at).toLocaleDateString()
+            : "";
 
         const resolvedText = memory.body_text || memory.text || "";
         const isEditing = editingId === memory.id;
@@ -308,7 +308,7 @@ export default function MemoryFeedList({
                     </span>
                   )}
 
-                  {!isEditing && (
+                  {!isEditing && !isPublished && (
                     <button
                       type="button"
                       onClick={() => startEdit(memory)}
@@ -317,13 +317,15 @@ export default function MemoryFeedList({
                       Edit
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(memory.id)}
-                    className="text-[10px] text-memory-muted hover:text-red-600 transition-colors cursor-pointer font-medium uppercase tracking-wide"
-                  >
-                    Delete
-                  </button>
+                  {!isPublished && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(memory.id)}
+                      className="text-[10px] text-memory-muted hover:text-red-600 transition-colors cursor-pointer font-medium uppercase tracking-wide"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 

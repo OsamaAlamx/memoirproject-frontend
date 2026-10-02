@@ -1,8 +1,8 @@
 // cspell:disable
 
 /**
- * @file useCaptureMemory.ts
- * @description Production-grade custom React hook managing draft states,
+ * @file hooks.ts
+ * @description Client data path for the memories feature: draft states,
  * secure audio/photo media upload pipelines, memory submission,
  * and strict resource cleanup to prevent memory leaks.
  */
@@ -10,8 +10,25 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { api } from "@/lib/api/client";
+import { createMemory } from "./api";
+import { uploadAndRegisterMedia } from "@/features/media";
 import { useLocalStorageDraft } from "@/hooks/useLocalStorageDraft";
+
+export interface CapturePhoto {
+  id: string;
+  file: File;
+  caption: string;
+}
+
+export interface AudioClip {
+  id: string;
+  blob: Blob;
+  url: string;
+}
+
+function newCaptureId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
   const [draft, setDraft] = useLocalStorageDraft(`memory_draft_${memoirId}`, {
@@ -20,12 +37,10 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
     occurred_start: new Date().toISOString().split("T")[0],
   });
 
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoCaption, setPhotoCaption] = useState<string>("");
+  const [photos, setPhotos] = useState<CapturePhoto[]>([]);
 
   const [recording, setRecording] = useState<boolean>(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -46,14 +61,21 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
   };
 
   /**
-   * Resets audio states and revokes object URLs to prevent browser memory leaks.
+   * Drops one audio clip and revokes its object URL to prevent browser memory leaks.
    */
-  const clearRecording = () => {
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
-    setAudioBlob(null);
-    setAudioUrl(null);
+  const removeAudioClip = (id: string) => {
+    setAudioClips((prev) => {
+      const clip = prev.find((c) => c.id === id);
+      if (clip) URL.revokeObjectURL(clip.url);
+      return prev.filter((c) => c.id !== id);
+    });
+  };
+
+  const clearAudioClips = () => {
+    setAudioClips((prev) => {
+      prev.forEach((c) => URL.revokeObjectURL(c.url));
+      return [];
+    });
   };
 
   /**
@@ -62,24 +84,20 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
   useEffect(() => {
     return () => {
       stopMediaStream();
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      setAudioClips((prev) => {
+        prev.forEach((c) => URL.revokeObjectURL(c.url));
+        return prev;
+      });
     };
-  }, [audioUrl]);
+  }, []);
 
   /**
-   * Requests microphone permissions, cleans up past streams/URLs, and initializes recording.
+   * Requests microphone permissions and initializes recording. Each completed
+   * take is appended to audioClips so entries can hold multiple recordings.
    */
   const startRecording = async () => {
     // Ensure prior stream is completely terminated before starting a new one
     stopMediaStream();
-
-    // Revoke any existing audio preview URL to prevent memory accumulation
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-      setAudioUrl(null);
-    }
 
     audioChunksRef.current = [];
     try {
@@ -94,13 +112,8 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
 
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
-
-        // Safely generate and assign new object URL
-        setAudioUrl((prevUrl) => {
-          if (prevUrl) URL.revokeObjectURL(prevUrl);
-          return URL.createObjectURL(blob);
-        });
+        const url = URL.createObjectURL(blob);
+        setAudioClips((prev) => [...prev, { id: newCaptureId(), blob, url }]);
 
         // Terminate stream tracks immediately once recording stops
         stopMediaStream();
@@ -122,26 +135,25 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
       setRecording(false);
     }
   };
-  // This giving us memoir is
-  const resolveMemoirId = (): string => {
-    // 1. If memoirId was passed as a prop, handle it whether it's a string or an object
-    if (memoirId) {
-      if (typeof memoirId === "string") {
-        return memoirId;
-      }
-     if (typeof memoirId === "object" && memoirId !== null) {
-      // Extract the ID if an object or response wrapper was passed
-      const obj = memoirId as Record<string, unknown>;
-      const dataObj = obj.data as Record<string, unknown> | undefined;
-      const nestedDataObj = dataObj?.data as Record<string, unknown> | undefined;
 
-      return (
-        (typeof obj.id === "string" ? obj.id : "") ||
-        (typeof dataObj?.id === "string" ? dataObj.id : "") ||
-        (typeof nestedDataObj?.id === "string" ? nestedDataObj.id : "") ||
-        ""
-      );
-    }
+  const addPhotos = (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (list.length === 0) return;
+    setPhotos((prev) => [...prev, ...list.map((file) => ({ id: newCaptureId(), file, caption: "" }))]);
+  };
+
+  const setPhotoCaption = (id: string, caption: string) => {
+    setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, caption } : p)));
+  };
+
+  const removePhoto = (id: string) => {
+    setPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const resolveMemoirId = (): string => {
+    // 1. Direct prop takes precedence
+    if (memoirId) {
+      return memoirId;
     }
 
     // 2. Fallback to localStorage if prop is empty
@@ -166,61 +178,6 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
   };
 
   /**
-   * Helper function to handle presigned URL requests, direct storage uploads,
-   * and metadata registration for any media asset type.
-   */
-  const uploadMediaAsset = async (
-    currentMemoirId: string,
-    file: Blob,
-    filename: string,
-    mimeType: string,
-    kind: "photo" | "audio",
-    caption?: string,
-    durationMs?: number | null,
-  ): Promise<string> => {
-    const presignRes = await api.getPresignedUrl({
-      memoir_id: currentMemoirId,
-      filename,
-      file_type: mimeType,
-      kind,
-    });
-
-    const uploadUrl =
-      presignRes.upload_url || presignRes.signed_url || presignRes.url;
-    const storageKey = presignRes.storage_key || presignRes.path;
-
-    if (!uploadUrl || !storageKey) {
-      throw new Error(`Failed to retrieve upload parameters for ${kind}.`);
-    }
-
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": mimeType },
-      body: file,
-    });
-
-    if (!uploadRes.ok) {
-      const errorText = await uploadRes.text();
-      throw new Error(
-        `Failed to upload ${kind} to storage bucket: ${errorText}`,
-      );
-    }
-
-    const metaRes = await api.registerMediaMetadata({
-      memoir_id: currentMemoirId,
-      storage_key: storageKey,
-      kind,
-      mime_type: mimeType,
-      byte_size: file.size,
-      original_filename: filename,
-      caption,
-      duration_ms: durationMs,
-    });
-
-    return metaRes.id;
-  };
-
-  /**
    * Handles form submission, orchestrates file uploads, and saves the final memory entry.
    */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -239,39 +196,38 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
     try {
       const mediaAssetIds: string[] = [];
 
-      // 1. Photo Upload Pipeline
-      if (photoFile) {
-        const photoId = await uploadMediaAsset(
-          currentMemoirId,
-          photoFile,
-          photoFile.name,
-          photoFile.type,
-          "photo",
-          photoCaption,
-          null,
-        );
+      // 1. Photo Upload Pipeline (supports multiple images)
+      for (const photo of photos) {
+        const photoId = await uploadAndRegisterMedia({
+          memoirId: currentMemoirId,
+          file: photo.file,
+          kind: "photo",
+          filename: photo.file.name,
+          mimeType: photo.file.type,
+          caption: photo.caption,
+          durationMs: null,
+        });
         mediaAssetIds.push(photoId);
       }
 
-      // 2. Audio Upload Pipeline
-      if (audioBlob) {
-        const audioFileName = `voice_memo_${Date.now()}.webm`;
-        // const calculatedDuration = await getAudioDurationMs(audioBlob);
-        const audioId = await uploadMediaAsset(
-          currentMemoirId,
-          audioBlob,
-          audioFileName,
-          "audio/webm",
-          "audio",
-          "Voice recording",
-          5000,
-        );
+      // 2. Audio Upload Pipeline (supports multiple voice recordings)
+      for (const clip of audioClips) {
+        const audioFileName = `voice_memo_${Date.now()}_${clip.id}.webm`;
+        const audioId = await uploadAndRegisterMedia({
+          memoirId: currentMemoirId,
+          file: new File([clip.blob], audioFileName, { type: "audio/webm" }),
+          kind: "audio",
+          filename: audioFileName,
+          mimeType: "audio/webm",
+          caption: "Voice recording",
+          durationMs: 5000,
+        });
         mediaAssetIds.push(audioId);
       }
 
       const hasDate = Boolean(draft.occurred_start);
 
-      await api.createMemory({
+      await createMemory({
         memoir_id: currentMemoirId,
         title: draft.title,
         body_text: draft.body_text,
@@ -290,9 +246,8 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
         body_text: "",
         occurred_start: new Date().toISOString().split("T")[0],
       });
-      setPhotoFile(null);
-      setPhotoCaption("");
-      clearRecording();
+      setPhotos([]);
+      clearAudioClips();
 
       setSuccessMsg("Memory successfully captured!");
       if (onSuccess) onSuccess();
@@ -310,18 +265,18 @@ export function useCaptureMemory(memoirId: string, onSuccess?: () => void) {
   return {
     draft,
     setDraft,
-    photoFile,
-    setPhotoFile,
-    photoCaption,
+    photos,
+    addPhotos,
     setPhotoCaption,
+    removePhoto,
     recording,
-    audioUrl,
+    audioClips,
+    removeAudioClip,
     loading,
     error,
     successMsg,
     startRecording,
     stopRecording,
-    clearRecording,
     handleSubmit,
   };
 }

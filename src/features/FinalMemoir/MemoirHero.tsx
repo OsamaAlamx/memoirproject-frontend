@@ -24,16 +24,19 @@ export default function MemoirHero({
   const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
   const [isCarouselHovered, setIsCarouselHovered] = useState(false);
 
+  // Continuous loop over photos only — no blank beat between cycles.
+  const activeIndex = displayPhotos.length > 0 ? heroPhotoIndex % displayPhotos.length : 0;
+
   useEffect(() => {
     if (isCarouselHovered || displayPhotos.length === 0) return;
     const timer = setInterval(() => {
-      setHeroPhotoIndex((prev) => (prev + 1) % (displayPhotos.length + 1));
+      setHeroPhotoIndex((prev) => (prev + 1) % displayPhotos.length);
     }, 2000);
     return () => clearInterval(timer);
   }, [isCarouselHovered, displayPhotos.length]);
 
   return (
-    <section className="pt-36 pb-8 px-6 md:px-12 max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
+    <section className="pt-36 pb-8 px-6 md:px-12 max-w-[100rem] mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
       <div className="flex-1 text-left w-full md:max-w-lg">
         <h2 className="text-5xl md:text-6xl font-serif italic text-memory-maroon font-normal tracking-tight">
           {subjectName}&apos;s Story
@@ -54,20 +57,30 @@ export default function MemoirHero({
         onMouseEnter={() => setIsCarouselHovered(true)}
         onMouseLeave={() => setIsCarouselHovered(false)}
       >
-        {/* Render Image Carousel */}
-        {heroPhotoIndex < displayPhotos.length && displayPhotos.length > 0 && (
+        {/* Render Image Carousel — every photo opens the catalogue */}
+        {displayPhotos.length > 0 && (
           <div className="relative w-full h-full flex items-center justify-center">
             {displayPhotos.map((photo, idx) => {
               if (!photo.url || typeof photo.url !== "string") return null;
+              const isActive = idx === activeIndex;
 
               return (
                 <div
                   key={photo.id}
+                  role={isActive ? "button" : undefined}
+                  tabIndex={isActive ? 0 : -1}
+                  aria-label={isActive ? "View photographic archives" : undefined}
+                  onClick={isActive ? onOpenGallery : undefined}
+                  onKeyDown={isActive ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") onOpenGallery();
+                  } : undefined}
                   className={`absolute transition-opacity duration-500 ease-in-out ${
-                    idx === heroPhotoIndex ? "opacity-100 z-20" : "opacity-0 z-10"
+                    isActive
+                      ? "opacity-100 z-20 pointer-events-auto cursor-pointer"
+                      : "opacity-0 z-10 pointer-events-none"
                   }`}
                 >
-                  <figure className="w-56 md:w-72 bg-white p-2.5 shadow-xl border border-stone-200">
+                  <figure className="w-64 md:w-80 bg-white p-2.5 shadow-xl border border-stone-200">
                     <div className="relative w-full aspect-[4/3] bg-stone-100 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -78,6 +91,15 @@ export default function MemoirHero({
                           (e.target as HTMLElement).style.display = "none";
                         }}
                       />
+                      {isActive && (
+                        <button
+                          type="button"
+                          onClick={onOpenGallery}
+                          className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-[10px] md:text-[11px] font-serif uppercase tracking-[0.18em] text-white backdrop-blur-sm transition-colors hover:bg-memory-maroon cursor-pointer"
+                        >
+                          View catalogue
+                        </button>
+                      )}
                     </div>
                     {photo.caption && (
                       <figcaption className="pt-3 pb-1 text-[11px] md:text-[12px] font-serif italic text-stone-600 text-center leading-tight line-clamp-1">
@@ -91,11 +113,11 @@ export default function MemoirHero({
           </div>
         )}
 
-        {/* Render Action Button at the end of the loop */}
-        {(heroPhotoIndex === displayPhotos.length || displayPhotos.length === 0) && (
+        {/* Empty state only: no photos at all */}
+        {displayPhotos.length === 0 && (
           <button
             onClick={onOpenGallery}
-            className="w-56 md:w-72 h-48 md:h-56 bg-white border border-stone-200 shadow-xl flex flex-col items-center justify-center gap-4 transition-colors duration-300 group cursor-pointer"
+            className="w-64 md:w-80 h-52 md:h-64 bg-white border border-stone-200 shadow-xl flex flex-col items-center justify-center gap-4 transition-colors duration-300 group cursor-pointer"
           >
             <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#FAF9F6] border border-stone-200 flex items-center justify-center group-hover:bg-memory-maroon group-hover:text-white transition-colors text-stone-400">
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

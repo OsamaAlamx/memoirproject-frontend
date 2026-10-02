@@ -8,16 +8,17 @@
 
 import { useState } from "react";
 import { MemoryItem } from "./MemoryCard";
-import { useCaptureMemory } from "@/hooks/useCaptureMemory";
+import { useCaptureMemory } from "@/features/memories";
 
 interface MemoryFeedProps {
   memories: MemoryItem[];
   memoirId?: string; 
+  isPublished?: boolean;
   onOptionSelect?: (action: string, memoryId: string) => void;
   onSuccess?: () => void;
 }
 
-export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: MemoryFeedProps) {
+export function MemoryFeed({ memoirId, isPublished = false, onSuccess }: MemoryFeedProps) {
   const [activeCaptureMode, setActiveCaptureMode] = useState<"text" | "audio" | "combined" | null>(null);
 
   // Fallback to localStorage if the memoirId prop wasn't passed down
@@ -37,18 +38,18 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
   const {
     draft,
     setDraft,
-    photoFile,
-    setPhotoFile,
-    photoCaption,
+    photos,
+    addPhotos,
     setPhotoCaption,
+    removePhoto,
     recording,
-    audioUrl,
+    audioClips,
+    removeAudioClip,
     loading,
     error,
     successMsg,
     startRecording,
     stopRecording,
-    clearRecording,
     handleSubmit
   } = useCaptureMemory(effectiveMemoirId, () => {
     setActiveCaptureMode(null);
@@ -56,6 +57,11 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
   });
 
   const handleCardClick = (mode: "text" | "audio" | "combined") => {
+    // Published memoirs are frozen: the live book no longer accepts entries.
+    if (isPublished) {
+      alert("This memoir is published and no longer accepts new memories.");
+      return;
+    }
     // Guard capture actions if neither prop nor localStorage has a valid ID
     if (!effectiveMemoirId) {
       alert("Please select an active memoir before attempting to capture new entries.");
@@ -63,6 +69,18 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
     }
     setActiveCaptureMode(activeCaptureMode === mode ? null : mode);
   };
+
+  if (isPublished) {
+    return (
+      <div className="rounded-2xl border border-memory-maroon/20 bg-white p-8 text-center shadow-xs">
+        <h3 className="font-serif text-lg text-memory-primary mb-2">Memoir Published</h3>
+        <p className="text-sm text-memory-muted max-w-md mx-auto">
+          This memoir is live on its single share link. Adding memories is locked to keep the
+          published book stable — unpublish it from the Share tab to add more entries.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -210,10 +228,10 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
 
               {activeCaptureMode === "audio" && (
                 <div className="border-t border-memory-border pt-3">
-                  <label className="block text-xs font-semibold text-memory-muted uppercase mb-2">Voice Recording</label>
-                  {!recording && !audioUrl && (
+                  <label className="block text-xs font-semibold text-memory-muted uppercase mb-2">Voice Recordings</label>
+                  {!recording && (
                     <button type="button" onClick={startRecording} className="px-3 py-1.5 bg-memory-primary text-memory-light text-xs font-medium rounded hover:bg-memory-maroon cursor-pointer transition-colors">
-                      Record Voice
+                      {audioClips.length > 0 ? "Record Another" : "Record Voice"}
                     </button>
                   )}
                   {recording && (
@@ -221,33 +239,78 @@ export function MemoryFeed({ memories, memoirId, onOptionSelect, onSuccess }: Me
                       Stop Recording
                     </button>
                   )}
-                  {audioUrl && (
-                    <div className="flex items-center space-x-3 mt-2">
-                      <audio controls src={audioUrl} className="h-8" />
-                      <button type="button" onClick={clearRecording} className="text-xs text-red-600 underline cursor-pointer">Re-record</button>
+                  {audioClips.length > 0 && (
+                    <div className="space-y-2 mt-3">
+                      {audioClips.map((clip, index) => (
+                        <div key={clip.id} className="flex items-center space-x-3">
+                          <span className="text-xs text-memory-muted shrink-0">Take {index + 1}</span>
+                          <audio controls src={clip.url} className="h-8 min-w-0 flex-1" />
+                          <button type="button" onClick={() => removeAudioClip(clip.id)} className="text-xs text-red-600 underline cursor-pointer shrink-0">Remove</button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
 
               {activeCaptureMode === "combined" && (
-                <div className="border-t border-memory-border pt-3 space-y-3">
-                  <label className="block text-xs font-semibold text-memory-muted uppercase mb-2">Photograph</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                    className="text-xs text-memory-primary"
-                  />
-                  {photoFile && (
+                <div className="border-t border-memory-border pt-3 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-memory-muted uppercase mb-2">Photographs</label>
                     <input
-                      type="text"
-                      placeholder="Optional photo caption..."
-                      value={photoCaption}
-                      onChange={(e) => setPhotoCaption(e.target.value)}
-                      className="w-full bg-memory-light border border-memory-border rounded-lg px-3 py-2 text-sm text-memory-primary focus:outline-none focus:border-memory-accent mt-2"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        if (e.target.files) addPhotos(e.target.files);
+                        e.target.value = "";
+                      }}
+                      className="text-xs text-memory-primary"
                     />
-                  )}
+                    {photos.length > 0 && (
+                      <div className="space-y-2 mt-3">
+                        {photos.map((photo, index) => (
+                          <div key={photo.id} className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-memory-primary truncate">{index + 1}. {photo.file.name}</p>
+                              <input
+                                type="text"
+                                placeholder="Optional photo caption..."
+                                value={photo.caption}
+                                onChange={(e) => setPhotoCaption(photo.id, e.target.value)}
+                                className="w-full bg-memory-light border border-memory-border rounded-lg px-3 py-2 text-sm text-memory-primary focus:outline-none focus:border-memory-accent mt-1"
+                              />
+                            </div>
+                            <button type="button" onClick={() => removePhoto(photo.id)} className="text-xs text-red-600 underline cursor-pointer shrink-0 mt-1">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-memory-muted uppercase mb-2">Voice Recordings</label>
+                    {!recording && (
+                      <button type="button" onClick={startRecording} className="px-3 py-1.5 bg-memory-primary text-memory-light text-xs font-medium rounded hover:bg-memory-maroon cursor-pointer transition-colors">
+                        {audioClips.length > 0 ? "Record Another" : "Record Voice"}
+                      </button>
+                    )}
+                    {recording && (
+                      <button type="button" onClick={stopRecording} className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded animate-pulse cursor-pointer">
+                        Stop Recording
+                      </button>
+                    )}
+                    {audioClips.length > 0 && (
+                      <div className="space-y-2 mt-3">
+                        {audioClips.map((clip, index) => (
+                          <div key={clip.id} className="flex items-center space-x-3">
+                            <span className="text-xs text-memory-muted shrink-0">Take {index + 1}</span>
+                            <audio controls src={clip.url} className="h-8 min-w-0 flex-1" />
+                            <button type="button" onClick={() => removeAudioClip(clip.id)} className="text-xs text-red-600 underline cursor-pointer shrink-0">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

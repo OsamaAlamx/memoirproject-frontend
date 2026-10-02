@@ -4,7 +4,6 @@
     "esbenp.prettier-vscode",
     "bradlc.vscode-tailwindcss",
     "yoavbls.pretty-ts-errors",
-    "vitest.explorer",
     "mikestead.dotenv"
   ]
 }

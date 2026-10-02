@@ -1,12 +1,13 @@
 /**
- * @file useComments.ts
- * @description Custom React hook for managing comment state and submissions.
+ * @file hooks.ts
+ * @description Client data path for the comments feature.
  */
 
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { api, CommentEntity } from "@/lib/api/client";
+import { getComments, createComment } from "./api";
+import type { CommentEntity } from "./schemas";
 
 export function useComments(memoryId: string, memoirId: string) {
   const [comments, setComments] = useState<CommentEntity[]>([]);
@@ -22,7 +23,7 @@ export function useComments(memoryId: string, memoirId: string) {
 
     try {
       setError(null);
-      const data = await api.getComments(memoryId);
+      const data = await getComments(memoryId);
       setComments(data);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Error loading comments";
@@ -37,7 +38,7 @@ export function useComments(memoryId: string, memoirId: string) {
     loadComments();
   }, [loadComments]);
 
-  const addComment = async (body: string,parentCommentId?: string) => {
+  const addComment = async (body: string, parentCommentId?: string) => {
     if (!body.trim()) return;
 
     if (!memoirId) {
@@ -49,7 +50,7 @@ export function useComments(memoryId: string, memoirId: string) {
       setSubmitting(true);
       setError(null);
 
-      // Payload only requires memoir details and body text. 
+      // Payload only requires memoir details and body text.
       const payload = {
         memoir_id: memoirId,
         memory_id: memoryId,
@@ -58,8 +59,8 @@ export function useComments(memoryId: string, memoirId: string) {
         body: body.trim(),
       };
 
-      //This calling function in client.ts
-      const newComment = await api.createComment(payload);
+      //This calling function in api.ts
+      const newComment = await createComment(payload);
 
       setComments((prev) => [...prev, newComment]);
     } catch (err: unknown) {

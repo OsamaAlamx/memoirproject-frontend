@@ -72,6 +72,24 @@ export function isApiError(error: unknown): error is ApiError {
 }
 
 /**
+ * True when the backend rejected the stored JWT (expired, invalid, revoked).
+ * Callers use this to redirect to /login instead of retrying with the same token.
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "http" && error.status === 401;
+}
+
+/**
+ * Drops a stale JWT so the next guard/redirect sees a logged-out state.
+ * Safe to call from any client component; no-op on the server.
+ */
+export function clearExpiredSession(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("token");
+}
+
+/**
  * Turns a FastAPI error body into a readable sentence.
  *
  * FastAPI raises errors in two shapes:

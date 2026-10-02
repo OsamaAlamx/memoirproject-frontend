@@ -1,10 +1,13 @@
 /**
- * @file hooks/useExportMemoir.ts
- * @description React hook for handling memoir PDF export requests, status polling, and blob-based custom filename downloads.
+ * @file hooks.ts
+ * @description Client data path for the export feature: memoir PDF export
+ * requests, status polling, and blob-based custom filename downloads.
  */
 
-import { useState } from 'react';
-import { api } from '@/lib/api/client';
+"use client";
+
+import { useState } from "react";
+import { requestMemoirExport, getLatestExportStatus, downloadExportBlob } from "./api";
 
 export function useExportMemoir(memoirId: string) {
   const [isExporting, setIsExporting] = useState(false);
@@ -19,12 +22,12 @@ export function useExportMemoir(memoirId: string) {
 
     setIsExporting(true);
     setError(null);
-    setExportMessage('Preparing your printable memoir PDF...');
+    setExportMessage("Preparing your printable memoir PDF...");
 
     try {
-      // 1. Trigger the export job via the centralized api client object
-      await api.requestMemoirExport(memoirId);
-      setExportMessage('Formatting book layout in the background...');
+      // 1. Trigger the export job via the feature's api.ts
+      await requestMemoirExport(memoirId);
+      setExportMessage("Formatting book layout in the background...");
 
       // 2. Poll for job completion
       let attempts = 0;
@@ -33,49 +36,48 @@ export function useExportMemoir(memoirId: string) {
       const pollInterval = setInterval(async () => {
         attempts++;
         try {
-          // Use centralized api method for status polling (handles auth headers automatically)
-          const data = await api.getLatestExportStatus(memoirId);
+          const data = (await getLatestExportStatus(memoirId)) as {
+            status: string;
+            download_url?: string;
+            error_message?: string;
+          };
 
-          if (data.status === 'ready' && data.download_url) {
+          if (data.status === "ready" && data.download_url) {
             clearInterval(pollInterval);
             setIsExporting(false);
-            setExportMessage('PDF downloaded successfully! Check your downloads folder.');
+            setExportMessage("PDF downloaded successfully! Check your downloads folder.");
 
             // 3. Fetch as blob to bypass cross-origin restrictions and force local download
-            const fileResponse = await fetch(data.download_url);
-            const blob = await fileResponse.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
+            const blobUrl = await downloadExportBlob(data.download_url);
 
-            const link = document.createElement('a');
+            const link = document.createElement("a");
             link.href = blobUrl;
-            
+
             // Set user-defined file name or fallback safely
-            const fileName = customFileName?.trim() ? `${customFileName.trim()}.pdf` : 'my-memoir-archive.pdf';
+            const fileName = customFileName?.trim() ? `${customFileName.trim()}.pdf` : "my-memoir-archive.pdf";
             link.download = fileName;
 
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(blobUrl);
-
-          } else if (data.status === 'failed') {
+          } else if (data.status === "failed") {
             clearInterval(pollInterval);
             setIsExporting(false);
-            setError(`Export failed: ${data.error_message || 'Unknown error'}`);
+            setError(`Export failed: ${data.error_message || "Unknown error"}`);
             setExportMessage(null);
           } else if (attempts >= maxAttempts) {
             clearInterval(pollInterval);
             setIsExporting(false);
-            setError('Export timed out. Please try again.');
+            setError("Export timed out. Please try again.");
             setExportMessage(null);
           }
         } catch (pollErr) {
           console.error("Polling error:", pollErr);
         }
       }, 2000);
-
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred during export.';
+      const errorMessage = err instanceof Error ? err.message : "An error occurred during export.";
       setError(errorMessage);
       setExportMessage(null);
       setIsExporting(false);

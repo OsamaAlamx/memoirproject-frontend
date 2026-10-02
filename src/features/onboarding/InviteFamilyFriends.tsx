@@ -5,12 +5,46 @@
 
 "use client";
 import Image from "next/image";
+import { useState } from "react";
 import { ArrowLeft, Heart, Link2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { createMemoir } from "@/features/memoir";
 
 export default function InviteFamilyFriends() {
   const router = useRouter();
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+
+  /**
+   * End-of-funnel exit. The funnel stashes `pending_memoir` for post-auth
+   * creation, so a logged-in user arriving here still has an uncreated draft:
+   * flush it now so the new memoir opens instead of stranding the draft.
+   * Returns true when navigation was handled (caller must stop).
+   */
+  const finishLoggedIn = async (): Promise<boolean> => {
+    if (typeof window === "undefined") return false;
+    if (!localStorage.getItem("access_token")) return false;
+    setFinishing(true);
+    setFinishError(null);
+    try {
+      const pending = localStorage.getItem("pending_memoir");
+      if (pending) {
+        const created = await createMemoir(JSON.parse(pending));
+        localStorage.setItem("active_memoir", JSON.stringify(created));
+        localStorage.removeItem("pending_memoir");
+        router.push("/dashboard");
+      } else {
+        router.push("/memoirs");
+      }
+      return true;
+    } catch (err) {
+      setFinishError(err instanceof Error ? err.message : "Could not finish setup. Please try again.");
+      return true;
+    } finally {
+      setFinishing(false);
+    }
+  };
 
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-memory-bg px-6 py-12 text-memory-primary font-sans">
@@ -163,6 +197,7 @@ export default function InviteFamilyFriends() {
                   src="/invite family.jpg"
                   alt="A cherished family memory"
                   fill
+                  sizes="195px"
                   className="object-cover"
                 />
               </div>
@@ -183,18 +218,32 @@ export default function InviteFamilyFriends() {
             transition={{ delay: 0.55, duration: 0.5 }}
             className="mx-auto mt-7 flex w-full max-w-sm flex-col gap-2"
           >
+            {finishError && (
+              <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                {finishError}
+              </p>
+            )}
+
             <button
               type="button"
-              onClick={() => router.push("/")}
-              className="w-full cursor-pointer rounded-xl bg-memory-primary py-4 text-[15px] font-semibold text-white shadow-md shadow-memory-primary/10 transition hover:bg-memory-maroon"
+              disabled={finishing}
+              onClick={async () => {
+                if (await finishLoggedIn()) return;
+                router.push("/");
+              }}
+              className="w-full cursor-pointer rounded-xl bg-memory-primary py-4 text-[15px] font-semibold text-white shadow-md shadow-memory-primary/10 transition hover:bg-memory-maroon disabled:opacity-60"
             >
-              Invite Family & Friends
+              {finishing ? "Finishing setup…" : "Invite Family & Friends"}
             </button>
 
             <button
               type="button"
-              onClick={() => router.push("/signup")}
-              className="cursor-pointer py-2 font-serif text-sm text-memory-muted transition hover:text-memory-primary"
+              disabled={finishing}
+              onClick={async () => {
+                if (await finishLoggedIn()) return;
+                router.push("/signup");
+              }}
+              className="cursor-pointer py-2 font-serif text-sm text-memory-muted transition hover:text-memory-primary disabled:opacity-60"
             >
               Maybe later
             </button>

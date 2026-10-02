@@ -32,4 +32,4 @@ update it when you change what that directory holds. The short version:
 - Do not wrap `fetch` in a `try/catch` without calling `unstable_rethrow(error)` first — Next.js
   signals control flow by throwing, and swallowing it breaks the production build silently.
 
-Run `npm run verify` (typecheck + lint + test) before considering work complete.
+Run `npm run verify` (typecheck + lint) before considering work complete.

@@ -18,6 +18,7 @@ export default function ScatteredMemories() {
             src="/TopLeftImage.jpg"
             alt="Vintage family memory"
             fill
+            sizes="192px"
             className="w-full h-full object-cover"
           />
         </div>
@@ -28,6 +29,7 @@ export default function ScatteredMemories() {
             src="/BottomRightImage.jpg"
             alt="Nostalgic family memory"
             fill
+            sizes="288px"
             className="w-full h-full object-cover"
           />
         </div>

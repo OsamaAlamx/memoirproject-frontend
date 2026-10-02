@@ -10,14 +10,19 @@ import { MemoryFeed } from "./components/MemoryFeed";
 import MemoryFeedList from "./MemoryFeedList";
 import { BookCoverExperience } from "./BookCoverExperience";
 import { ChapterOrganizer } from "./components/ChapterOrganizer";
-import { api } from "@/lib/api/client";
+import { SharePanel } from "@/features/share";
+import { ModerationPanel } from "@/features/comments";
+import { getUserActiveMemoir } from "@/features/memoir";
+import { getMyProfile } from "@/features/auth";
+import { isUnauthorizedError } from "@/lib/api/errors";
 
 interface MemoirData {
   id?: string;
-  subject_name?: string;
-  subject_born_on?: string;
-  subject_died_on?: string;
+  subject_name?: string | null;
+  subject_born_on?: string | null;
+  subject_died_on?: string | null;
   subject_is_living?: boolean;
+  status?: string | null;
 }
 
 interface MemoirLocalStorageData {
@@ -27,6 +32,7 @@ interface MemoirLocalStorageData {
   subject_born_on?: string;
   subject_died_on?: string;
   subject_is_living?: boolean;
+  status?: string;
 }
 
 export default function OwnerDashboardPage() {
@@ -36,6 +42,44 @@ export default function OwnerDashboardPage() {
   const [dob, setDob] = useState<string>("");
   const [dod, setDod] = useState<string>("");
   const [loadingMemoir, setLoadingMemoir] = useState<boolean>(true);
+  const [ownerName, setOwnerName] = useState<string>("");
+  const [memoirStatus, setMemoirStatus] = useState<string>("");
+  const isPublished = memoirStatus === "published";
+
+  // Owner name resolves after mount only: the server has no localStorage, so
+  // rendering stored data on first paint would mismatch the SSR HTML.
+  // Sessions that logged in before the profile was persisted fall through
+  // to GET /api/auth/me and cache the result for next time.
+  useEffect(() => {
+    async function resolveOwnerName() {
+      try {
+        const raw = localStorage.getItem("auth_user");
+        if (raw) {
+          const parsed = JSON.parse(raw) as { full_name?: unknown };
+          if (typeof parsed.full_name === "string" && parsed.full_name.trim()) {
+            setOwnerName(parsed.full_name.trim());
+            return;
+          }
+        }
+      } catch {
+        // Malformed snapshot: fall through to the profile fetch.
+      }
+      try {
+        const profile = await getMyProfile();
+        const name = profile?.full_name?.trim();
+        if (name) {
+          setOwnerName(name);
+          localStorage.setItem(
+            "auth_user",
+            JSON.stringify({ full_name: name, email: profile?.email ?? undefined }),
+          );
+        }
+      } catch {
+        // Keep the generic "Owner" fallback; a 401 already bounces to login.
+      }
+    }
+    resolveOwnerName();
+  }, []);
 
   const router = useRouter();
 
@@ -54,6 +98,7 @@ export default function OwnerDashboardPage() {
   const applyMemoirData = useCallback((memoirObj: MemoirData) => {
     if (memoirObj.id) setMemoirId(memoirObj.id);
     if (memoirObj.subject_name) setSubjectName(memoirObj.subject_name);
+    if (memoirObj.status) setMemoirStatus(memoirObj.status);
     if (memoirObj.subject_born_on) setDob(memoirObj.subject_born_on.substring(0, 4));
 
     if (memoirObj.subject_died_on) {
@@ -70,27 +115,42 @@ export default function OwnerDashboardPage() {
   useEffect(() => {
     async function initMemoir() {
       setLoadingMemoir(true);
+      let hasSavedSelection = false;
       try {
         const savedMemoir = localStorage.getItem("active_memoir");
 
         if (savedMemoir) {
-          const parsed = JSON.parse(savedMemoir) as MemoirLocalStorageData;
-          const memoirObj = parsed.data || parsed;
+          try {
+            const parsed = JSON.parse(savedMemoir) as MemoirLocalStorageData;
+            const memoirObj = parsed.data || parsed;
 
-          if (memoirObj && memoirObj.id) {
-            applyMemoirData(memoirObj);
-            setLoadingMemoir(false);
-            return;
+            if (memoirObj && memoirObj.id) {
+              applyMemoirData(memoirObj);
+              hasSavedSelection = true;
+            }
+          } catch {
+            // Malformed snapshot: fall through to the backend fetch below.
           }
         }
 
-        // Fallback to backend API if localStorage is missing or stale
+        // Only fall back to the backend's "active" memoir when the user has
+        // no explicit selection (e.g. fresh login). Otherwise the fetch
+        // overwrites whatever was just clicked in /memoirs with the newest
+        // memoir_participant row.
         const token = localStorage.getItem("access_token");
-        if (token) {
-          const activeMemoir = await api.getUserActiveMemoir().catch(() => null);
-          if (activeMemoir && activeMemoir.id) {
-            localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
-            applyMemoirData(activeMemoir);
+        if (token && !hasSavedSelection) {
+          try {
+            const activeMemoir = await getUserActiveMemoir();
+            if (activeMemoir && activeMemoir.id) {
+              localStorage.setItem("active_memoir", JSON.stringify(activeMemoir));
+              applyMemoirData(activeMemoir);
+            }
+          } catch (err: unknown) {
+            // Stale JWT: apiRequest already cleared storage; bounce to login.
+            if (isUnauthorizedError(err)) {
+              router.replace("/login?expired=1");
+              return;
+            }
           }
         }
       } catch (err: unknown) {
@@ -101,7 +161,27 @@ export default function OwnerDashboardPage() {
     }
 
     initMemoir();
-  }, [applyMemoirData]);
+  }, [applyMemoirData, router]);
+
+  const handlePublished = useCallback(() => {
+    setMemoirStatus("published");
+    try {
+      const raw = localStorage.getItem("active_memoir");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const obj = parsed.data || parsed;
+        if (parsed.data) {
+          parsed.data = { ...obj, status: "published" };
+        } else {
+          parsed.status = "published";
+        }
+        localStorage.setItem("active_memoir", JSON.stringify(parsed));
+      }
+    } catch {
+      // Best-effort snapshot refresh; backend stays the source of truth.
+    }
+    setActiveTab("share");
+  }, []);
 
   const metricsData = [
     { label: "Total Entries", value: memoryCount },
@@ -112,6 +192,7 @@ export default function OwnerDashboardPage() {
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("active_memoir");
+    localStorage.removeItem("auth_user");
     router.push("/");
   };
 
@@ -121,7 +202,7 @@ export default function OwnerDashboardPage() {
       subtitle="A preserved record of personal stories, reflections, and voice notes."
     >
       <div className="flex min-h-screen overflow-hidden rounded-2xl border border-memory-border bg-memory-bg text-memory-primary shadow-lg">
-        <DashboardSidebar activeTab={activeTab} setActiveTab={setActiveTab} memoirId={memoirId} />
+        <DashboardSidebar activeTab={activeTab} setActiveTab={setActiveTab} memoirId={memoirId} ownerName={ownerName} />
 
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <DashboardHeader
@@ -155,6 +236,7 @@ export default function OwnerDashboardPage() {
                 <MemoryFeed
                   memories={[]}
                   memoirId={memoirId}
+                  isPublished={isPublished}
                   onSuccess={() => setFeedRefreshKey((prev) => prev + 1)}
                 />
 
@@ -166,6 +248,7 @@ export default function OwnerDashboardPage() {
                   <MemoryFeedList
                     key={feedRefreshKey}
                     memoirId={memoirId}
+                    isPublished={isPublished}
                     onCountChange={setMemoryCount}
                   />
                 ) : (
@@ -177,7 +260,7 @@ export default function OwnerDashboardPage() {
             )}
 
             <div className={activeTab === "chapters" ? "" : "hidden"}>
-              <ChapterOrganizer memoirId={memoirId} />
+              <ChapterOrganizer memoirId={memoirId} isPublished={isPublished} onPublished={handlePublished} />
             </div>
 
             {activeTab === "media" && (
@@ -195,6 +278,14 @@ export default function OwnerDashboardPage() {
                 </p>
               </div>
             )}
+
+            <div className={activeTab === "share" ? "" : "hidden"}>
+              <SharePanel memoirId={memoirId} isPublishedExternal={isPublished} />
+            </div>
+
+            <div className={activeTab === "moderate" ? "" : "hidden"}>
+              {activeTab === "moderate" && <ModerationPanel memoirId={memoirId} />}
+            </div>
           </div>
         </main>
       </div>

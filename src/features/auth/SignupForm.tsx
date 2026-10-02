@@ -8,35 +8,23 @@
 
 "use client";
 
-import { signupSchema } from "./schemas";
+import { signupFormSchema, SignupFormInput, SignupFormOutput } from "./schemas";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useAuth } from "./hooks";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-
-const extendedSignupSchema = signupSchema
-  .extend({
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match!",
-    path: ["confirmPassword"],
-  });
-
-type ExtendedSignupInput = z.infer<typeof extendedSignupSchema>;
 
 export default function SignupForm() {
   const router = useRouter();
   const { loading, serverError, successMessage, handleSignup } = useAuth();
 
-  // If already logged in, go to dashboard
+  // If already logged in, go to the memoir list
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
-      router.replace("/dashboard");
+      router.replace("/memoirs");
     }
   }, [router]);
 
@@ -44,11 +32,11 @@ export default function SignupForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ExtendedSignupInput>({
-    resolver: zodResolver(extendedSignupSchema),
+  } = useForm<SignupFormInput, unknown, SignupFormOutput>({
+    resolver: zodResolver(signupFormSchema),
   });
 
-  const onSubmit = async (data: ExtendedSignupInput) => {
+  const onSubmit = async (data: SignupFormOutput) => {
     try {
       await handleSignup(data);
       // routing is handled inside the hook:

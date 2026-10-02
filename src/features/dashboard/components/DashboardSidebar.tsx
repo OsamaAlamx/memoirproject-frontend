@@ -5,9 +5,17 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   memoirId?: string;
+  ownerName?: string;
 }
 
-export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarProps) {
+function ownerInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "O";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function DashboardSidebar({ activeTab, setActiveTab, memoirId, ownerName }: SidebarProps) {
   const router = useRouter();
 
   const navItems = [
@@ -15,6 +23,8 @@ export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarP
     { id: "chapters", label: "AI Organizer" },
     { id: "media", label: "Media Vault" },
     { id: "team", label: "Collaborators" },
+    { id: "share", label: "Share" },
+    { id: "moderate", label: "Review" },
   ];
 
   return (
@@ -26,7 +36,7 @@ export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarP
           </div>
           <div>
             <h1 className="font-serif font-bold text-lg text-memory-primary tracking-tight">Memoir</h1>
-            <span className="text-xs text-memory-accent font-medium uppercase tracking-wider">Owner Dashboard</span>
+            <span className="text-xs text-memory-accent font-medium uppercase tracking-wider">{ownerName ? `${ownerName} (owner)` : "Owner"}</span>
           </div>
         </div>
 
@@ -65,10 +75,10 @@ export function DashboardSidebar({ activeTab, setActiveTab, memoirId }: SidebarP
 
       <div className="border-t border-memory-border pt-4 flex items-center gap-3">
         <div className="w-9 h-9 rounded-full bg-memory-border flex items-center justify-center font-semibold text-memory-primary text-sm">
-          DK
+          {ownerName ? ownerInitials(ownerName) : "O"}
         </div>
         <div className="overflow-hidden">
-          <p className="text-sm font-medium text-memory-primary truncate">Daniyah Khan</p>
+          <p className="text-sm font-medium text-memory-primary truncate">{ownerName || "Owner"}</p>
           <p className="text-xs text-memory-muted truncate">Owner</p>
         </div>
       </div>

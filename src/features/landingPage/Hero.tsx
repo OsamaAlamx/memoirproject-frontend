@@ -18,7 +18,7 @@ export default function Hero() {
     const token = localStorage.getItem("access_token");
     if (token) {
       e.preventDefault();
-      router.push("/dashboard");
+      router.push("/memoirs");
     }
   };
 

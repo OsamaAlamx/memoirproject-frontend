@@ -27,8 +27,6 @@ primitive you add may drop a hook in.
 - **Start every file with `"use client"`.** These hooks use state, effects, or browser APIs, so they can
   only run in a client component. The directive on the hook means a consumer cannot import it into a
   server component by accident.
-- **Colocate the test:** `useDebouncedValue.ts` and `useDebouncedValue.test.ts`, using
-  `renderHook` from `@testing-library/react`.
 - **Return a tuple or an object, not both across the codebase.** Pick the shape that reads best at the
   call site and stay consistent within a hook's lifetime.
 

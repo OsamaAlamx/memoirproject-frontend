@@ -29,12 +29,11 @@ link instead of nesting it inside `<Button>`.
 ## Adding your own shared components
 
 Create sibling folders as the need appears — `layout/` for shells and navigation, `forms/` for
-field wrappers. Put each non-trivial component in its own folder with its test:
+field wrappers. Put each non-trivial component in its own folder:
 
 ```
 components/layout/Sidebar/
   Sidebar.tsx
-  Sidebar.test.tsx
   index.ts
 ```
 

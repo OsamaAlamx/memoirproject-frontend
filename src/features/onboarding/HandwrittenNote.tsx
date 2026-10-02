@@ -1,14 +1,42 @@
 /**
  * @file HandwrittenNote.tsx
- * @description Component rendering a handwritten style note card for user Hafsa.
+ * @description Component rendering a handwritten style note card personalized
+ * with the memoir subject's name from onboarding.
  * Elevated to a premium, blank stationery look to distinguish it from the drafting phase.
  */
 
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+function readSubjectName(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('pending_memoir');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { subject_name?: unknown };
+    if (typeof parsed.subject_name === 'string' && parsed.subject_name.trim()) {
+      return parsed.subject_name.trim();
+    }
+  } catch {
+    // Ignore malformed draft data and fall back to generic greeting.
+  }
+  return null;
+}
+
 export default function HandwrittenNote() {
+  // Resolved after mount only: the server has no localStorage, so rendering
+  // the stored name on first paint would mismatch the SSR HTML.
+  const [subjectName, setSubjectName] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function resolveSubjectName() {
+      const name = readSubjectName();
+      if (name) setSubjectName(name);
+    }
+    resolveSubjectName();
+  }, []);
   return (
     <section className="min-h-screen bg-memory-bg text-memory-primary flex flex-col items-center justify-center px-6 py-16 relative z-10 font-sans selection:bg-memory-primary selection:text-white">
 
@@ -19,7 +47,7 @@ export default function HandwrittenNote() {
         <div className="relative z-10 flex flex-col items-center text-center">
           {/* Using the global font-caveat utility class */}
           <h2 className="font-caveat text-[40px] font-bold text-memory-primary mb-4">
-            Dear Hafsa!
+            {subjectName ? `Dear ${subjectName}!` : 'Dear Friend!'}
           </h2>
 
           <p className="font-caveat text-[28px] text-memory-primary leading-10">

@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { loginSchema, LoginInput } from "./schemas";
+import { loginSchema, LoginInput, LoginOutput } from "./schemas";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,17 +23,23 @@ export default function LoginForm() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const { loading, serverError, setServerError, handleLogin } = useAuth();
 
+  /* eslint-disable react-hooks/set-state-in-effect -- one-shot redirect/message from URL param */
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
-      router.replace("/dashboard");
+      router.replace("/memoirs");
+      return;
+    }
+    if (typeof window !== "undefined" && window.location.search.includes("expired=1")) {
+      setInfoMessage("Your session expired. Please log in again.");
     }
   }, [router]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginInput>({
+  } = useForm<LoginInput, unknown, LoginOutput>({
     resolver: zodResolver(loginSchema),
   });
 
