@@ -49,7 +49,9 @@ export class ApiError extends Error {
   }
 
   static http(url: string, status: number, detail: string): ApiError {
-    return new ApiError({ code: "http", url, status, message: detail });
+    // Never surface backend internals (PostgREST, stack traces, provider messages).
+    const safe = sanitizeDetail(status, detail);
+    return new ApiError({ code: "http", url, status, message: safe });
   }
 
   static contract(url: string, message: string, cause?: unknown): ApiError {
@@ -69,6 +71,25 @@ export class ApiError extends Error {
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
+}
+
+/** Strip backend internals before they reach UI/alerts. */
+function sanitizeDetail(status: number, detail: string): string {
+  const lower = detail.toLowerCase();
+  const leakMarkers = [
+    "supabase", "postgrest", "postgres", "pg_", "relation", "column",
+    "jwt", "token expired", "signature", "could not validate",
+    "traceback", "exception", "sql", "database error",
+  ];
+  if (status >= 500) return "Something went wrong. Please try again.";
+  if (leakMarkers.some((m) => lower.includes(m))) {
+    if (status === 401) return "Invalid email or password.";
+    if (status === 403) return "You do not have access to this.";
+    if (status === 404) return "Not found.";
+    return "Request failed. Please try again.";
+  }
+  // Cap length so huge validation blobs never hit the UI.
+  return detail.length > 300 ? `${detail.slice(0, 300)}…` : detail;
 }
 
 /**

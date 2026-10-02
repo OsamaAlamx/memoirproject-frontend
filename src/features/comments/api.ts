@@ -12,7 +12,7 @@ import {
 
 export async function getComments(memoryId: string): Promise<CommentEntity[]> {
   return apiRequest(
-    `/api/comments/?memory_id=${memoryId}`,
+    `/api/comments/?memory_id=${encodeURIComponent(memoryId)}`,
     { method: "GET" },
     commentsResponseSchema,
   ).catch((err) => {
@@ -39,7 +39,7 @@ export async function listPendingComments(memoirId: string): Promise<CommentEnti
 
 export async function approveComment(commentId: string): Promise<CommentEntity> {
   return apiRequest(
-    `/api/comments/${commentId}/approve`,
+    `/api/comments/${encodeURIComponent(commentId)}/approve`,
     { method: "PATCH" },
     commentResponseSchema,
   );
@@ -47,7 +47,7 @@ export async function approveComment(commentId: string): Promise<CommentEntity> 
 
 export async function rejectComment(commentId: string): Promise<string> {
   const body = await apiRequest(
-    `/api/comments/${commentId}`,
+    `/api/comments/${encodeURIComponent(commentId)}`,
     { method: "DELETE" },
     deleteCommentResponseSchema,
   );

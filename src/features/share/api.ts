@@ -25,7 +25,7 @@ export async function ensureShareLink(memoirId: string) {
   const request = (async () => {
     try {
       const body = await apiRequest(
-        `/api/memoirs/${memoirId}/share-link`,
+        `/api/memoirs/${encodeURIComponent(memoirId)}/share-link`,
         { method: "POST" },
         shareLinkResponseSchema,
       );
@@ -41,17 +41,17 @@ export async function ensureShareLink(memoirId: string) {
 }
 
 export async function revokeShareLink(memoirId: string) {
-  await apiRequest(`/api/memoirs/${memoirId}/share-link`, { method: "DELETE" }, shareActionResponseSchema);
+  await apiRequest(`/api/memoirs/${encodeURIComponent(memoirId)}/share-link`, { method: "DELETE" }, shareActionResponseSchema);
 }
 
 export async function getSharedMemoir(token: string) {
-  const body = await apiRequest(`/api/share/${token}`, { method: "GET" }, sharedMemoirResponseSchema);
+  const body = await apiRequest(`/api/share/${encodeURIComponent(token)}`, { method: "GET" }, sharedMemoirResponseSchema);
   return body.data;
 }
 
 export async function joinSharedMemoir(token: string, displayName: string) {
   const body = await apiRequest(
-    `/api/share/${token}/join`,
+    `/api/share/${encodeURIComponent(token)}/join`,
     { method: "POST", body: JSON.stringify({ display_name: displayName }) },
     readerJoinResponseSchema,
   );
@@ -69,7 +69,7 @@ export async function postSharedComment(
   payload: { participant_id: string; memory_id?: string; parent_comment_id?: string; body: string },
 ) {
   const body = await apiRequest(
-    `/api/share/${token}/comments`,
+    `/api/share/${encodeURIComponent(token)}/comments`,
     { method: "POST", body: JSON.stringify(payload) },
     guestCommentResponseSchema,
   );
@@ -79,7 +79,7 @@ export async function postSharedComment(
 export async function getReactionSummary(token: string, participantId?: string) {
   const qs = participantId ? `?participant_id=${encodeURIComponent(participantId)}` : "";
   const body = await apiRequest(
-    `/api/share/${token}/reactions${qs}`,
+    `/api/share/${encodeURIComponent(token)}/reactions${qs}`,
     { method: "GET" },
     reactionSummaryResponseSchema,
   );
@@ -91,7 +91,7 @@ export async function toggleSharedReaction(
   payload: { participant_id: string; memory_id?: string; media_asset_id?: string; comment_id?: string },
 ) {
   const body = await apiRequest(
-    `/api/share/${token}/reactions`,
+    `/api/share/${encodeURIComponent(token)}/reactions`,
     { method: "POST", body: JSON.stringify(payload) },
     reactionToggleResponseSchema,
   );

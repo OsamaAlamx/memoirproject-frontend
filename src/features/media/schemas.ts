@@ -12,6 +12,7 @@ export const presignedUrlRequestSchema = z.object({
     }),
   file_type: z.string().min(1, "MIME type is required."),
   kind: z.enum(["photo", "audio", "video"], "Media kind must be photo, audio, or video."),
+  byte_size: z.number().gt(0).max(52428576, "File too large."),
 });
 
 export type PresignedUrlPayload = z.infer<typeof presignedUrlRequestSchema>;

@@ -72,12 +72,9 @@ function chapterAnchorId(name: string): string {
 }
 
 function resolvePhotoUrl(asset: ApiMediaAsset): string {
+  // Bucket is private: only backend-signed playback_url works. Never guess public.
   if (asset.playback_url) return asset.playback_url;
-  if (asset.storage_key) {
-    const baseUrl = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "");
-    const cleanKey = asset.storage_key.replace(/^\/+/, "");
-    return baseUrl ? `${baseUrl}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${cleanKey}` : "";
-  }
+  if (asset.storage_key && /^(https?:\/\/|\/)/.test(asset.storage_key)) return asset.storage_key;
   return "";
 }
 

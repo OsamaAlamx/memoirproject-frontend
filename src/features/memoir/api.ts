@@ -21,7 +21,7 @@ export async function createMemoir(payload: MemoirCreatePayload) {
 }
 
 export async function getLiveMemoir(memoirId: string) {
-  const body = await apiRequest(`/api/memoirs/${memoirId}/live`, { method: "GET" }, liveMemoirResponseSchema);
+  const body = await apiRequest(`/api/memoirs/${encodeURIComponent(memoirId)}/live`, { method: "GET" }, liveMemoirResponseSchema);
   return body.data;
 }
 
@@ -37,7 +37,7 @@ export async function listMemoirs(): Promise<MemoirRecord[]> {
 
 export async function deleteMemoir(memoirId: string) {
   const body = await apiRequest(
-    `/api/memoirs/${memoirId}`,
+    `/api/memoirs/${encodeURIComponent(memoirId)}`,
     { method: "DELETE" },
     deleteMemoirResponseSchema,
   );
@@ -46,7 +46,7 @@ export async function deleteMemoir(memoirId: string) {
 
 export async function setMemoirPublication(memoirId: string, publish: boolean) {
   const body = await apiRequest(
-    `/api/memoirs/${memoirId}/publication`,
+    `/api/memoirs/${encodeURIComponent(memoirId)}/publication`,
     { method: "PATCH", body: JSON.stringify({ publish }) },
     publicationResponseSchema,
   );
@@ -55,7 +55,7 @@ export async function setMemoirPublication(memoirId: string, publish: boolean) {
 
 export async function setMemoirSettings(memoirId: string, settings: { comment_policy?: string }) {
   const body = await apiRequest(
-    `/api/memoirs/${memoirId}/settings`,
+    `/api/memoirs/${encodeURIComponent(memoirId)}/settings`,
     { method: "PATCH", body: JSON.stringify(settings) },
     memoirSettingsResponseSchema,
   );

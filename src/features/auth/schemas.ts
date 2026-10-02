@@ -2,13 +2,13 @@ import { z } from 'zod';
 
 export const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters long."),
+  password: z.string().min(10, "Password must be at least 10 characters long.").max(128),
 });
 
 export const signupSchema = z.object({
   full_name: z.string().min(1, "Full name is required."),
   email: z.string().email("Please enter a valid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters long."),
+  password: z.string().min(10, "Password must be at least 10 characters long.").max(128),
 });
 
 // TypeScript types inferred from the schemas. No field uses a default, so

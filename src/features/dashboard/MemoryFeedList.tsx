@@ -19,7 +19,9 @@ import { uploadAndRegisterMedia } from "@/features/media";
 type MemoryRecord = MemoryFeedItem & { text?: string };
 
 /**
- * Safely resolves media URLs to prevent Next.js image parser crashes.
+ * Backend now returns short-lived signed playback_url (bucket is private).
+ * Prefer it; never guess a public URL (would 403). storage_key fallback only
+ * when it is already a full URL (legacy data).
  */
 function resolveMediaUrl(asset?: MediaAsset): string | null {
   if (!asset) return null;
@@ -41,13 +43,6 @@ function resolveMediaUrl(asset?: MediaAsset): string | null {
       asset.storage_key.startsWith("/")
     ) {
       return asset.storage_key;
-    }
-
-    const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl) {
-      const cleanBase = supabaseUrl.replace(/\/+$/, "");
-      const cleanKey = asset.storage_key.replace(/^\/+/, "");
-      return `${cleanBase}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${cleanKey}`;
     }
   }
 

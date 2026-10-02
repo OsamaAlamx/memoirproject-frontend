@@ -11,7 +11,7 @@ import {
 } from "./schemas";
 
 export async function getMemoirFeed(memoirId: string) {
-  return apiRequest(`/api/memories/feed/${memoirId}`, { method: "GET" }, memoirFeedResponseSchema);
+  return apiRequest(`/api/memories/feed/${encodeURIComponent(memoirId)}`, { method: "GET" }, memoirFeedResponseSchema);
 }
 
 export async function createMemory(payload: MemoryCreatePayload) {
@@ -24,12 +24,12 @@ export async function createMemory(payload: MemoryCreatePayload) {
 
 export async function updateMemory(memoryId: string, payload: MemoryUpdatePayload) {
   return apiRequest(
-    `/api/memories/${memoryId}`,
+    `/api/memories/${encodeURIComponent(memoryId)}`,
     { method: "PATCH", body: JSON.stringify(memoryUpdateSchema.parse(payload)) },
     updateMemoryResponseSchema,
   );
 }
 
 export async function deleteMemory(memoryId: string) {
-  return apiRequest(`/api/memories/${memoryId}`, { method: "DELETE" }, deleteMemoryResponseSchema);
+  return apiRequest(`/api/memories/${encodeURIComponent(memoryId)}`, { method: "DELETE" }, deleteMemoryResponseSchema);
 }

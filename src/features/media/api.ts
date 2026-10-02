@@ -46,6 +46,7 @@ export async function uploadAndRegisterMedia(args: {
     filename: args.filename,
     file_type: args.mimeType,
     kind: args.kind,
+    byte_size: args.file.size,
   });
   const uploadUrl = presign.upload_url || presign.signed_url || presign.url;
   const storageKey = presign.storage_key || presign.path;

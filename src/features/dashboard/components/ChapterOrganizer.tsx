@@ -16,13 +16,10 @@ type FeedMemory = MemoryFeedItem;
 type FeedMediaAsset = MediaAsset;
 
 function resolveAssetUrl(asset?: FeedMediaAsset): string {
+  // Bucket is private: only backend-signed playback_url works. Never guess public.
   if (!asset) return "";
   if (asset.playback_url) return asset.playback_url;
-  if (asset.storage_key) {
-    const base = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "");
-    const clean = asset.storage_key.replace(/^\/+/, "");
-    return base ? `${base}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${clean}` : "";
-  }
+  if (asset.storage_key && /^(https?:\/\/|\/)/.test(asset.storage_key)) return asset.storage_key;
   return "";
 }
 

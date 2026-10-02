@@ -19,10 +19,12 @@ import type { HeroPhoto } from "@/features/FinalMemoir";
 import { env } from "@/lib/config/env";
 
 function publicAssetUrl(storageKey?: string | null): string {
+  // Bucket is private: backend playback_url (signed) is the only valid source.
+  // Never construct /object/public/ (403). storage_key alone is not fetchable.
   if (!storageKey) return "";
-  const baseUrl = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "");
-  const cleanKey = storageKey.replace(/^\/+/, "");
-  return baseUrl ? `${baseUrl}/storage/v1/object/public/${env.NEXT_PUBLIC_SUPABASE_BUCKET}/${cleanKey}` : "";
+  if (storageKey.startsWith("http://") || storageKey.startsWith("https://") || storageKey.startsWith("/"))
+    return storageKey;
+  return "";
 }
 
 function memoryPhotos(mem: SharedMemory): HeroPhoto[] {
